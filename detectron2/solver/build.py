@@ -18,6 +18,10 @@ def build_optimizer(cfg: CfgNode, model: torch.nn.Module) -> torch.optim.Optimiz
         lr = cfg.SOLVER.BASE_LR
         weight_decay = cfg.SOLVER.WEIGHT_DECAY
         if key.endswith("norm.weight") or key.endswith("norm.bias"):
+            # NOTE: WEIGHT_DECAY_NORM is set to 0 in default
+            # because parameters_norm operation doesn't need weight decay.
+            # the key name of layers should obey this rule!!!!
+            # Otherwise, don't use this optimizer!!!!
             weight_decay = cfg.SOLVER.WEIGHT_DECAY_NORM
         elif key.endswith(".bias"):
             # NOTE: unlike Detectron v1, we now default BIAS_LR_FACTOR to 1.0

@@ -293,6 +293,39 @@ def annotations_to_instances(annos, image_size, mask_format="polygon"):
     return target
 
 
+def annotations2_to_instances(annos, image_size):
+    """
+    Create an :class:`Instances` object used by the models,
+    from instance annotations in the dataset dict.
+
+    Args:
+        annos (list[dict]): a list of instance annotations in one image, each
+            element for one instance.
+        image_size (tuple): height, width
+
+    Returns:
+        Instances:
+            It will contain fields "gt_boxes", "gt_classes",
+            "gt_masks", "gt_keypoints", if they can be obtained from `annos`.
+            This is the format that builtin models expect.
+    """
+    target = Instances(image_size)
+
+    classes = [anno["category2_id"] for anno in annos]
+    classes = torch.tensor(classes, dtype=torch.int64)
+    target.gt_classes = classes
+
+    part = [anno["part"] for anno in annos]
+    part = torch.tensor(part, dtype=torch.int64)
+    target.gt_part = part
+
+    toward = [anno["toward"] for anno in annos]
+    toward = torch.tensor(toward, dtype=torch.int64)
+    target.gt_toward = toward
+
+    return target
+
+
 def annotations_to_instances_rotated(annos, image_size):
     """
     Create an :class:`Instances` object used by the models,
