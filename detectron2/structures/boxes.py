@@ -1,7 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import math
 import numpy as np
-from enum import Enum, unique
+from enum import IntEnum, unique
 from typing import Iterator, List, Tuple, Union
 import torch
 
@@ -11,7 +11,7 @@ _RawBoxType = Union[List[float], Tuple[float, ...], torch.Tensor, np.ndarray]
 
 
 @unique
-class BoxMode(Enum):
+class BoxMode(IntEnum):
     """
     Enum of different ways to represent a box.
 
@@ -55,7 +55,11 @@ class BoxMode(Enum):
             )
             arr = torch.tensor(box)[None, :]
         else:
-            arr = torch.from_numpy(np.asarray(box)).clone()  # avoid modifying the input box
+            # avoid modifying the input box
+            if is_numpy:
+                arr = torch.from_numpy(np.asarray(box)).clone()
+            else:
+                arr = box.clone()
 
         assert to_mode.value not in [
             BoxMode.XYXY_REL,
