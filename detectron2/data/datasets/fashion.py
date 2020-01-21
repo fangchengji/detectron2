@@ -34,8 +34,8 @@ def _isArrayLike(obj):
 
 class Fashion(COCO):
     """
-    Fashion fashion datasets is annotated as COCO. But it contains more information than COCO.
-    Fashion data has two annotations, named 'annotations' and 'annotations2'.
+    configs fashion datasets is annotated as COCO. But it contains more information than COCO.
+    configs data has two annotations, named 'annotations' and 'annotations2'.
     'annotations' is the same as COCO.
     'annotations2' is extra information. It includes image id, category id, part, toward.
     """

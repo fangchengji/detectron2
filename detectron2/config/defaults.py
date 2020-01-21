@@ -437,28 +437,6 @@ _C.MODEL.RETINANET.FOCAL_LOSS_GAMMA = 2.0
 _C.MODEL.RETINANET.FOCAL_LOSS_ALPHA = 0.25
 _C.MODEL.RETINANET.SMOOTH_L1_LOSS_BETA = 0.1
 
-# ---------------------------------------------------------------------------- #
-# FashionNet
-# ---------------------------------------------------------------------------- #
-_C.MODEL.FASHIONNET = CN()
-
-# ---------------------------------------------------------------------------- #
-# FashionNet Classification Head
-# ---------------------------------------------------------------------------- #
-_C.MODEL.FASHIONNET.CLASSIFICATION_HEAD = CN()
-# This is the classification tasks name.
-_C.MODEL.FASHIONNET.CLASSIFICATION_HEAD.TASK_NAMES = ["category2_id", "part", "toward"]
-# This is the number of foreground classes for each task.
-_C.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CLASSES = [4, 3, 2]
-
-# Convolutions to use in the cls and bbox tower
-# NOTE: this doesn't include the last conv for logits
-_C.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CONVS = 4
-
-# Prior prob for rare case (i.e. foreground) at the beginning of training.
-# This is used to set the bias for the logits layer of the classifier subnet.
-# This improves training stability in the case of heavy class imbalance.
-_C.MODEL.FASHIONNET.CLASSIFICATION_HEAD.PRIOR_PROB = 0.01
 
 # ---------------------------------------------------------------------------- #
 # ResNe[X]t options (ResNets = {ResNet, ResNeXt}

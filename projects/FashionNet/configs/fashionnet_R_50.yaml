@@ -1,6 +1,7 @@
 MODEL:
   META_ARCHITECTURE: "FashionNet"
-  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  #WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  WEIGHTS: "output/model_0004999.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   BACKBONE:

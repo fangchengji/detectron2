@@ -130,7 +130,7 @@ def register_all_coco(root="datasets"):
         )
 
 
-# ==== Predefined datasets and splits for Fashion==========
+# ==== Predefined datasets and splits for configs==========
 
 _PREDEFINED_FASHION = {
     "fashion_train_test": (
