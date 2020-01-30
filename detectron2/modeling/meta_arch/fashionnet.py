@@ -589,12 +589,11 @@ class FashionClassificationHead(nn.Module):
         """
         logits = []
         for feature in features:
-            #logits.append(self.cls_score(self.cls_subnet(feature)))
             x = self.avgpool(feature)
-            r_size = x.size()[0:2]
-            x = self.linear(x.view(r_size).contiguous())
+            x = torch.flatten(x, 1)
+            x = self.linear(x)
             logits.append(x)
-            #logits.append(self.linear(self.avgpool(feature)))
+
         return logits[0], None
 
 
