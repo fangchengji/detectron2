@@ -166,7 +166,7 @@ class FashionNet(nn.Module):
             losses.update(
                 self.classification_losses(
                     gt_classification_classes,
-                    outputs["classification_logits"][0]
+                    outputs["classification_logits"]
                 )
             )
 
@@ -176,14 +176,17 @@ class FashionNet(nn.Module):
                                      outputs["detection_bbox_reg"],
                                      anchors,
                                      images.image_sizes)
+
+            category2_results = self.inference_classification(outputs["classification_logits"])
+
             processed_results = []
-            for results_per_image, input_per_image, image_size in zip(
-                results, batched_inputs, images.image_sizes
+            for results_per_image, input_per_image, image_size, category2 in zip(
+                results, batched_inputs, images.image_sizes, category2_results
             ):
                 height = input_per_image.get("height", image_size[0])
                 width = input_per_image.get("width", image_size[1])
                 r = detector_postprocess(results_per_image, height, width)
-                processed_results.append({"instances": r})
+                processed_results.append({"instances": r, "instance2": category2})
             return processed_results
 
     def detection_losses(self, gt_classes, gt_anchors_deltas, pred_class_logits, pred_anchor_deltas):
@@ -383,6 +386,40 @@ class FashionNet(nn.Module):
 
         return gts
 
+    def inference_classification(self, pred_logits):
+        results = []
+        pred_logits.sigmoid_()
+
+        batch_nums = pred_logits.size()[0]
+
+        start = 0
+        pred_category = pred_logits[:, start: start + self.classification_classes[0]]
+        start += self.classification_classes[0]
+        pred_part = pred_logits[:, start: start + self.classification_classes[1]]
+        start += self.classification_classes[1]
+        pred_toward = pred_logits[:, start: start + self.classification_classes[2]]
+
+        pred_category_id = torch.argmax(pred_category, dim=1).view(batch_nums, -1)
+        pred_category_score = torch.gather(pred_category, 1, pred_category_id).view(batch_nums, -1)
+
+        pred_part_id = torch.argmax(pred_part, dim=1).view(batch_nums, -1)
+        pred_part_score = torch.gather(pred_part, 1, pred_part_id).view(batch_nums, -1)
+
+        pred_toward_id = torch.argmax(pred_toward, dim=1).view(batch_nums, -1)
+        pred_toward_score = torch.gather(pred_toward, 1, pred_toward_id).view(batch_nums, -1)
+
+        for i in range(0, batch_nums):
+            result = Instances((0, 0))
+            result.category_id = pred_category_id[i]
+            result.category_score = pred_category_score[i]
+            result.part = pred_part_id[i]
+            result.part_score = pred_part_score[i]
+            result.toward = pred_toward_id[i]
+            result.toward_score = pred_toward_score[i]
+            results.append(result)
+
+        return results
+
     def inference(self, box_cls, box_delta, anchors, image_sizes):
         """
         Arguments:
@@ -499,9 +536,9 @@ class FashionClassificationHead(nn.Module):
         # fmt: on
         # for multi classification tasks
         if isinstance(num_classes, list):
-            total_classes = sum(num_classes)
+            self.total_classes = sum(num_classes)
         elif isinstance(num_classes, int):
-            total_classes = num_classes
+            self.total_classes = num_classes
         else:
             raise Exception("FashionNet FASHIONNET.CLASSIFICATION_HEAD.NUM_CLASSES needs list or int.")
 
@@ -530,7 +567,7 @@ class FashionClassificationHead(nn.Module):
 
         # resnet fc for classification tasks
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.linear = nn.Linear(in_channels, total_classes)
+        self.linear = nn.Linear(in_channels, self.total_classes)
 
         # Sec 5.1 in "Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour":
         # "The 1000-way fully-connected layer is initialized by
@@ -554,11 +591,11 @@ class FashionClassificationHead(nn.Module):
         for feature in features:
             #logits.append(self.cls_score(self.cls_subnet(feature)))
             x = self.avgpool(feature)
-            x = torch.squeeze(x)
-            x = self.linear(x)
+            r_size = x.size()[0:2]
+            x = self.linear(x.view(r_size).contiguous())
             logits.append(x)
             #logits.append(self.linear(self.avgpool(feature)))
-        return logits, None
+        return logits[0], None
 
 
 class CombinedHead(nn.Module):
