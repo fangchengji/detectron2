@@ -15,9 +15,10 @@ from detectron2.evaluation import (
 )
 from detectron2.modeling import GeneralizedRCNNWithTTA
 from detectron2.utils.logger import setup_logger
-from detectron2.data import build_detection_test_loader, build_detection_train_loader
+#from detectron2.data import build_detection_test_loader, build_detection_train_loader
 
-from fashionnet import add_fashionnet_config, DatasetMapper
+from fashionnet import add_fashionnet_config, FashionNetCOCOEvaluator, DatasetMapper
+from fashionnet import build_detection_train_loader, build_detection_test_loader
 
 class Trainer(DefaultTrainer):
     """
@@ -31,20 +32,21 @@ class Trainer(DefaultTrainer):
     @classmethod
     def build_evaluator(cls, cfg, dataset_name, output_folder=None):
         """
-        Create evaluator(s) for a given dataset.
-        This uses the special metadata "evaluator_type" associated with each builtin dataset.
-        For your own dataset, you can simply create an evaluator manually in your
+        Create evaluator(s) for a given data.
+        This uses the special metadata "evaluator_type" associated with each builtin data.
+        For your own data, you can simply create an evaluator manually in your
         script and do not have to worry about the hacky if-else logic here.
         """
         if output_folder is None:
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
-        evaluator_list = []
         evaluator_type = MetadataCatalog.get(dataset_name).evaluator_type
-        if evaluator_type in ["coco", "coco_panoptic_seg"]:
-            evaluator_list.append(COCOEvaluator(dataset_name, cfg, True, output_folder))
+
+        evaluator_list = [COCOEvaluator(dataset_name, cfg, True, output_folder)]
+        #evaluator_list.append(FashionNetCOCOEvaluator(dataset_name, True, output_folder))
+
         if len(evaluator_list) == 0:
             raise NotImplementedError(
-                "no Evaluator for the dataset {} with the type {}".format(
+                "no Evaluator for the data {} with the type {}".format(
                     dataset_name, evaluator_type
                 )
             )
@@ -72,7 +74,8 @@ def setup(args):
     cfg.freeze()
     default_setup(cfg, args)
     # Setup logger for "densepose" module
-    setup_logger(output=cfg.OUTPUT_DIR, distributed_rank=comm.get_rank(), name="fashionnet")
+    setup_logger(output=cfg.OUTPUT_DIR, distributed_rank=comm.get_rank(),
+                 name="projects.FashionNet.fashionnet", abbrev_name="fashionnet")
     return cfg
 
 

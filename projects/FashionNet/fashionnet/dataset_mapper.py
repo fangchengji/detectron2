@@ -12,7 +12,7 @@ from detectron2.data import transforms as T
 
 
 """
-This file contains the default mapping that's applied to "dataset dicts".
+This file contains the default mapping that's applied to "data dicts".
 """
 
 __all__ = ["DatasetMapper"]
@@ -20,10 +20,10 @@ __all__ = ["DatasetMapper"]
 
 class DatasetMapper:
     """
-    A callable which takes a dataset dict in Detectron2 Dataset format,
+    A callable which takes a data dict in Detectron2 Dataset format,
     and map it into a format used by the model.
 
-    This is the default callable to be used to map your dataset dict into training data.
+    This is the default callable to be used to map your data dict into training data.
     You may need to follow it to implement your own one for customized logic.
 
     The callable currently does the following:

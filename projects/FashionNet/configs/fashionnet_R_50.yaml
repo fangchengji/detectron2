@@ -1,7 +1,7 @@
 MODEL:
   META_ARCHITECTURE: "FashionNet"
-  #WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
-  WEIGHTS: "output/model_0004999.pth"
+  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  #WEIGHTS: "output/model_0004999.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   BACKBONE:
@@ -21,14 +21,15 @@ MODEL:
     IOU_THRESHOLDS: [0.4, 0.5]
     IOU_LABELS: [0, -1, 1]
 DATASETS:
-  TRAIN: ("fashion_train_test",)
+  TRAIN: ("fashion_train_5w",)
+  #TRAIN: ("fashion_train_test",)
   TEST: ("fashion_train_test",)
 DATALOADER:
   SAMPLER_TRAIN: "RepeatFactorTrainingSampler"
-  REPEAT_THRESHOLD: 0.001
+  REPEAT_THRESHOLD: 0.25
 SOLVER:
   IMS_PER_BATCH: 16
-  BASE_LR: 0.01  # Note that RetinaNet uses a different default learning rate
+  BASE_LR: 0.001  # Note that RetinaNet uses a different default learning rate
   STEPS: (60000, 80000)
   MAX_ITER: 90000
 INPUT:
