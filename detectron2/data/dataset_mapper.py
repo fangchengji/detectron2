@@ -138,10 +138,6 @@ class DatasetMapper:
                 instances.gt_boxes = instances.gt_masks.get_bounding_boxes()
             dataset_dict["instances"] = utils.filter_empty_instances(instances)
 
-        if "annotations2" in dataset_dict:
-            instances2 = utils.annotations2_to_instances(dataset_dict.pop("annotations2"), image_shape)
-            dataset_dict["instances2"] = instances2
-
         # USER: Remove if you don't do semantic/panoptic segmentation.
         if "sem_seg_file_name" in dataset_dict:
             with PathManager.open(dataset_dict.pop("sem_seg_file_name"), "rb") as f:

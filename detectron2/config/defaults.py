@@ -349,7 +349,7 @@ _C.MODEL.ROI_KEYPOINT_HEAD.MIN_KEYPOINTS_PER_IMAGE = 1
 # in the minibatch.
 # The keypoint softmax loss is only calculated on visible keypoints.
 # Since the number of visible keypoints can vary significantly between
-# minibatches, this has the effect of up-weighting the importance ofD
+# minibatches, this has the effect of up-weighting the importance of
 # minibatches with few visible keypoints. (Imagine the extreme case of
 # only one visible keypoint versus N: in the case of N, each one
 # contributes 1/N to the gradient compared to the single keypoint

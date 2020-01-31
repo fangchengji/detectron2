@@ -26,6 +26,7 @@ from .cityscapes import load_cityscapes_instances, load_cityscapes_semantic
 from .pascal_voc import register_pascal_voc
 from .builtin_meta import _get_builtin_metadata
 
+
 # ==== Predefined datasets and splits for COCO ==========
 
 _PREDEFINED_SPLITS_COCO = {}
@@ -127,6 +128,9 @@ def register_all_coco(root="datasets"):
             os.path.join(root, semantic_root),
             instances_json,
         )
+
+
+# ==== Predefined datasets and splits for LVIS ==========
 
 
 _PREDEFINED_SPLITS_LVIS = {
