@@ -25,7 +25,6 @@ from .lvis import register_lvis_instances, get_lvis_instances_meta
 from .cityscapes import load_cityscapes_instances, load_cityscapes_semantic
 from .pascal_voc import register_pascal_voc
 from .builtin_meta import _get_builtin_metadata
-from .fashion import register_fashion_instances
 
 # ==== Predefined datasets and splits for COCO ==========
 
@@ -130,34 +129,6 @@ def register_all_coco(root="datasets"):
         )
 
 
-# ==== Predefined datasets and splits for configs==========
-
-_PREDEFINED_FASHION = {
-    "fashion_train_test": (
-        "deepfashion2/train_test/image",
-        "deepfashion2/train_test/train_test.json",
-    ),
-    "fashion_train_5w": (
-        "deepfashion2/train/image",
-        "deepfashion2/train/filtered_5w.json",
-    )
-}
-
-def register_all_fashion(root="datasets"):
-   for key, (image_root, json_file) in _PREDEFINED_FASHION.items():
-       # Assume pre-defined datasets live in `../datasets`.
-
-       register_fashion_instances(
-           key,
-           None,         # TODO: metadata
-           os.path.join(root, json_file) if "://" not in json_file else json_file,
-           os.path.join(root, image_root),
-       )
-
-
-# ==== Predefined datasets and splits for LVIS ==========
-
-
 _PREDEFINED_SPLITS_LVIS = {
     "lvis_v0.5": {
         "lvis_v0.5_train": ("coco/train2017", "lvis/lvis_v0.5_train.json"),
@@ -234,10 +205,7 @@ def register_all_pascal_voc(root="datasets"):
 
 
 # Register them all under "./datasets"
-_DATASETS_ROOT = "../datasets"
-
-register_all_coco(_DATASETS_ROOT)
-register_all_fashion(_DATASETS_ROOT)
-register_all_lvis(_DATASETS_ROOT)
-register_all_cityscapes(_DATASETS_ROOT)
-register_all_pascal_voc(_DATASETS_ROOT)
+register_all_coco()
+register_all_lvis()
+register_all_cityscapes()
+register_all_pascal_voc()
