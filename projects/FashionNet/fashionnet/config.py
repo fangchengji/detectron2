@@ -11,7 +11,7 @@ def add_fashionnet_config(cfg):
     _C = cfg
 
     # Add sampler meta module
-    _C.DATALOADER.SAMPLER_META = "projects.FashionNet.fashionnet.samplers"
+    _C.DATALOADER.SAMPLER_META = "fashionnet.samplers"
 
     # ---------------------------------------------------------------------------- #
     # FashionNet

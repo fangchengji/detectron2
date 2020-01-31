@@ -23,7 +23,7 @@ from detectron2.data.detection_utils import check_metadata_consistency
 
 from detectron2.data import samplers
 
-from projects.FashionNet.utils import import_class
+from utils import import_class
 
 """
 This file contains the default logic to build a dataloader for training or testing.

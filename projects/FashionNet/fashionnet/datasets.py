@@ -28,6 +28,19 @@ logger = logging.getLogger(__name__)
 __all__ = ["load_fashion_json"]
 
 
+# ==== Predefined fashion datasets and splits for configs==========
+_PREDEFINED_FASHION = {
+    "fashion_train_test": (
+        "deepfashion2/train_test/image",
+        "deepfashion2/train_test/train_test.json",
+    ),
+    "fashion_train_5w": (
+        "deepfashion2/train/image",
+        "deepfashion2/train/filtered_5w.json",
+    )
+}
+
+
 def _isArrayLike(obj):
     return hasattr(obj, '__iter__') and hasattr(obj, '__len__')
 
@@ -353,6 +366,22 @@ def register_fashion_instances(name, metadata, json_file, image_root):
     MetadataCatalog.get(name).set(
         json_file=json_file, image_root=image_root, evaluator_type="fashion"
     )
+
+
+def register_all_fashion(root="datasets"):
+   for key, (image_root, json_file) in _PREDEFINED_FASHION.items():
+       # Assume pre-defined datasets live in `../datasets`.
+
+       register_fashion_instances(
+           key,
+           None,         # TODO: metadata
+           os.path.join(root, json_file) if "://" not in json_file else json_file,
+           os.path.join(root, image_root),
+       )
+
+
+_DATASETS_ROOT = "/data/fangcheng.ji/datasets"
+register_all_fashion(_DATASETS_ROOT)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 MODEL:
   META_ARCHITECTURE: "FashionNet"
   WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
-  #WEIGHTS: "output/model_0004999.pth"
+  #WEIGHTS: "output/model_0074999.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   BACKBONE:
@@ -35,4 +35,5 @@ SOLVER:
 INPUT:
   MIN_SIZE_TRAIN: (640, 672, 704, 736, 768, 800)
   #MIN_SIZE_TRAIN_SAMPLING: "choice"
+OUTPUT_DIR: "./output"
 VERSION: 2

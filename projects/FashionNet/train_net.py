@@ -75,7 +75,7 @@ def setup(args):
     default_setup(cfg, args)
     # Setup logger for "densepose" module
     setup_logger(output=cfg.OUTPUT_DIR, distributed_rank=comm.get_rank(),
-                 name="projects.FashionNet.fashionnet", abbrev_name="fashionnet")
+                 name="fashionnet", abbrev_name="fashionnet")
     return cfg
 
 
