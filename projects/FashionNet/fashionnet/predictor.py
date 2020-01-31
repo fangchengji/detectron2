@@ -9,7 +9,7 @@ import torch
 from detectron2.data import MetadataCatalog
 from detectron2.engine.defaults import DefaultPredictor
 from detectron2.utils.video_visualizer import VideoVisualizer
-from detectron2.utils.visualizer import ColorMode, Visualizer
+from utils.visualizer import ColorMode, Visualizer
 
 
 class VisualizationDemo(object):
@@ -64,8 +64,9 @@ class VisualizationDemo(object):
                 vis_output = visualizer.draw_instance_predictions(predictions=instances)
 
             # add branch2 classification task result
-            if "instances2" in predictions:
-                instances2 = predictions["instances2"].to(self.cpu_device)
+            if "classification" in predictions:
+                classification = predictions["classification"].to(self.cpu_device)
+                vis_output = visualizer.draw_classification_predictions(predictions=classification)
 
         return predictions, vis_output
 

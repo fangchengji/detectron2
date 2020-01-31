@@ -9,6 +9,7 @@ from PIL import Image
 #from detectron2.data import MetadataCatalog
 from detectron2.data import detection_utils as utils
 from detectron2.data import transforms as T
+from detectron2.structures import Instances
 
 
 """
@@ -16,6 +17,39 @@ This file contains the default mapping that's applied to "data dicts".
 """
 
 __all__ = ["DatasetMapper"]
+
+
+def annotations2_to_classification(annos, image_size):
+    """
+    Create an :class:`Instances` object used by the models,
+    from instance annotations in the dataset dict.
+
+    Args:
+        annos (list[dict]): a list of instance annotations in one image, each
+            element for one instance.
+        image_size (tuple): height, width
+
+    Returns:
+        Instances:
+            It will contain fields "gt_boxes", "gt_classes",
+            "gt_masks", "gt_keypoints", if they can be obtained from `annos`.
+            This is the format that builtin models expect.
+    """
+    target = Instances(image_size)
+
+    classes = [anno["category2_id"] for anno in annos]
+    classes = torch.tensor(classes, dtype=torch.int64)
+    target.gt_classes = classes
+
+    part = [anno["part"] for anno in annos]
+    part = torch.tensor(part, dtype=torch.int64)
+    target.gt_part = part
+
+    toward = [anno["toward"] for anno in annos]
+    toward = torch.tensor(toward, dtype=torch.int64)
+    target.gt_toward = toward
+
+    return target
 
 
 class DatasetMapper:
@@ -141,8 +175,8 @@ class DatasetMapper:
             dataset_dict["instances"] = utils.filter_empty_instances(instances)
 
         if "annotations2" in dataset_dict:
-            instances2 = utils.annotations2_to_instances(dataset_dict.pop("annotations2"), image_shape)
-            dataset_dict["instances2"] = instances2
+            classification = annotations2_to_classification(dataset_dict.pop("annotations2"), image_shape)
+            dataset_dict["classification"] = classification
 
         # USER: Remove if you don't do semantic/panoptic segmentation.
         if "sem_seg_file_name" in dataset_dict:

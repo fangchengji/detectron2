@@ -76,7 +76,10 @@ if __name__ == "__main__":
 
     if args.input:
         if len(args.input) == 1:
-            args.input = glob.glob(os.path.expanduser(args.input[0]))
+            if os.path.isdir(args.input[0]):
+                args.input = glob.glob(args.input[0] + "/*.jpg")
+            else:
+                args.input = glob.glob(os.path.expanduser(args.input[0]))
             assert args.input, "The input path(s) was not found"
         for path in tqdm.tqdm(args.input, disable=not args.output):
             # use PIL, to be consistent with evaluation

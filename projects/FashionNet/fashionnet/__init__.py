@@ -5,6 +5,7 @@ from .config import add_fashionnet_config
 from .evaluator import FashionNetCOCOEvaluator
 from .dataloader import build_detection_test_loader, build_detection_train_loader
 from .predictor import VisualizationDemo
+from .fashionnet import FashionNet
 from . import datasets  # ensure the datasets are registered
 #from .grouped_batch_sampler import GroupedBatchSampler
 

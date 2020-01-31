@@ -10,15 +10,15 @@ from detectron2.layers import ShapeSpec, batched_nms, cat
 from detectron2.structures import Boxes, ImageList, Instances, pairwise_iou
 from detectron2.utils.logger import log_first_n
 
-from ..anchor_generator import build_anchor_generator
-from ..backbone import build_backbone
-from ..box_regression import Box2BoxTransform
-from ..matcher import Matcher
-from ..postprocessing import detector_postprocess
-from .build import META_ARCH_REGISTRY
+from detectron2.modeling.anchor_generator import build_anchor_generator
+from detectron2.modeling.backbone import build_backbone
+from detectron2.modeling.box_regression import Box2BoxTransform
+from detectron2.modeling.matcher import Matcher
+from detectron2.modeling.postprocessing import detector_postprocess
+from detectron2.modeling.meta_arch.build import META_ARCH_REGISTRY
 
 
-from .retinanet import RetinaNetHead
+from detectron2.modeling.meta_arch.retinanet import RetinaNetHead
 
 __all__ = ["FashionNet"]
 
@@ -138,8 +138,8 @@ class FashionNet(nn.Module):
             gt_instances = None
 
         # for fashion classification task
-        if "instances2" in batched_inputs[0]:
-            gt_classification = [x["instances2"].to(self.device) for x in batched_inputs]
+        if "classification" in batched_inputs[0]:
+            gt_classification = [x["classification"].to(self.device) for x in batched_inputs]
         else:
             gt_classification = None
 
@@ -186,7 +186,7 @@ class FashionNet(nn.Module):
                 height = input_per_image.get("height", image_size[0])
                 width = input_per_image.get("width", image_size[1])
                 r = detector_postprocess(results_per_image, height, width)
-                processed_results.append({"instances": r, "instance2": category2})
+                processed_results.append({"instances": r, "classification": category2})
             return processed_results
 
     def detection_losses(self, gt_classes, gt_anchors_deltas, pred_class_logits, pred_anchor_deltas):

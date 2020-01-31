@@ -41,6 +41,48 @@ _PREDEFINED_FASHION = {
 }
 
 
+# All fashion categories, together with their nice-looking visualization colors
+# It's from https://github.com/cocodataset/panopticapi/blob/master/panoptic_CLOTHES_CATEGORIES .json
+CLOTHES_CATEGORIES = [
+    {"color": [220, 20, 60], "isthing": 1, "id": 1, "name": "short_sleeved_shirt"},
+    {"color": [119, 11, 32], "isthing": 1, "id": 2, "name": "long_sleeved_shirt"},
+    {"color": [0, 0, 142], "isthing": 1, "id": 3, "name": "short_sleeved_outwear"},
+    {"color": [0, 0, 230], "isthing": 1, "id": 4, "name": "long_sleeved_outwear"},
+    {"color": [106, 0, 228], "isthing": 1, "id": 5, "name": "vest"},
+    {"color": [0, 60, 100], "isthing": 1, "id": 6, "name": "sling"},
+    {"color": [0, 80, 100], "isthing": 1, "id": 7, "name": "shorts"},
+    {"color": [0, 0, 70], "isthing": 1, "id": 8, "name": "trousers"},
+    {"color": [0, 0, 192], "isthing": 1, "id": 9, "name": "skirt"},
+    {"color": [250, 170, 30], "isthing": 1, "id": 10, "name": "short_sleeved_dress"},
+    {"color": [100, 170, 30], "isthing": 1, "id": 11, "name": "long_sleeved_dress"},
+    {"color": [220, 220, 0], "isthing": 1, "id": 12, "name": "vest_dress"},
+    {"color": [175, 116, 175], "isthing": 1, "id": 13, "name": "sling_dress"}
+]
+
+CATEGORY2_CLASSES = ['commodity', 'model', 'detail', 'specification']
+PART_CLASSES = ['top', 'down', 'whole']
+TOWARD_CLASSES = ['front', 'side or back']
+
+def _get_fashion_meta():
+    thing_ids = [k["id"] for k in CLOTHES_CATEGORIES if k["isthing"] == 1]
+    thing_colors = [k["color"] for k in CLOTHES_CATEGORIES if k["isthing"] == 1]
+    assert len(thing_ids) == 13, len(thing_ids)
+    # Mapping from the incontiguous COCO category id to an id in [0, 79]
+    thing_dataset_id_to_contiguous_id = {k: i for i, k in enumerate(thing_ids)}
+    thing_classes = [k["name"] for k in CLOTHES_CATEGORIES if k["isthing"] == 1]
+    ret = {
+        "thing_dataset_id_to_contiguous_id": thing_dataset_id_to_contiguous_id,
+        "thing_classes": thing_classes,
+        "thing_colors": thing_colors,
+
+        "category2_classes": CATEGORY2_CLASSES,
+        "part_classes": PART_CLASSES,
+        "toward_classes": TOWARD_CLASSES,
+    }
+
+    return ret
+
+
 def _isArrayLike(obj):
     return hasattr(obj, '__iter__') and hasattr(obj, '__len__')
 
@@ -360,11 +402,8 @@ def register_fashion_instances(name, metadata, json_file, image_root):
 
     # 2. Optionally, add metadata about this dataset,
     # since they might be useful in evaluation, visualization or logging
-    #MetadataCatalog.get(name).set(
-    #    json_file=json_file, image_root=image_root, evaluator_type="coco", **metadata
-    #)
     MetadataCatalog.get(name).set(
-        json_file=json_file, image_root=image_root, evaluator_type="fashion"
+        json_file=json_file, image_root=image_root, evaluator_type="fashion", **metadata
     )
 
 
@@ -374,7 +413,7 @@ def register_all_fashion(root="datasets"):
 
        register_fashion_instances(
            key,
-           None,         # TODO: metadata
+           _get_fashion_meta(),
            os.path.join(root, json_file) if "://" not in json_file else json_file,
            os.path.join(root, image_root),
        )
