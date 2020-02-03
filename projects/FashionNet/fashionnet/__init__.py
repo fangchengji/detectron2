@@ -3,7 +3,7 @@ from .samplers import InferenceSampler, RepeatFactorTrainingSampler, TrainingSam
 from .dataset_mapper import DatasetMapper
 from .config import add_fashionnet_config
 from .evaluator import FashionNetCOCOEvaluator
-from .dataloader import build_detection_test_loader, build_detection_train_loader
+from .data_build import build_detection_test_loader, build_detection_train_loader
 from .predictor import VisualizationDemo
 from .fashionnet import FashionNet
 from . import datasets  # ensure the datasets are registered
