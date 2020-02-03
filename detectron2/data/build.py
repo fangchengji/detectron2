@@ -160,7 +160,7 @@ def _quantize(x, bin_edges):
     return quantized
 
 
-def print_instances_class_histogram(dataset_dicts, class_names, attribute='annotations'):
+def print_instances_class_histogram(dataset_dicts, class_names):
     """
     Args:
         dataset_dicts (list[dict]): list of dataset dicts.
@@ -170,12 +170,8 @@ def print_instances_class_histogram(dataset_dicts, class_names, attribute='annot
     hist_bins = np.arange(num_classes + 1)
     histogram = np.zeros((num_classes,), dtype=np.int)
     for entry in dataset_dicts:
-        classes = []
-        annos = entry[attribute]
-        if attribute == 'annotations':
-            classes = [x["category_id"] for x in annos if not x.get("iscrowd", 0)]
-        elif attribute == 'annotations2':
-            classes = [x["category2_id"] for x in annos]
+        annos = entry["annotations"]
+        classes = [x["category_id"] for x in annos if not x.get("iscrowd", 0)]
         histogram += np.histogram(classes, bins=hist_bins)[0]
 
     N_COLS = min(6, len(class_names) * 2)
@@ -253,16 +249,6 @@ def get_detection_dataset_dicts(
             print_instances_class_histogram(dataset_dicts, class_names)
         except AttributeError:  # class names are not available for this dataset
             pass
-
-    has_classification = "annotations2" in dataset_dicts[0]
-    if has_classification:
-        try:
-            classification_names = MetadataCatalog.get(dataset_names[0]).classification_classes
-            check_metadata_consistency("classification_classes", dataset_names)
-            print_instances_class_histogram(dataset_dicts, classification_names, attribute='annotations2')
-        except AttributeError:  # class names are not available for this dataset
-            pass
-
     return dataset_dicts
 
 
@@ -312,7 +298,6 @@ def build_detection_train_loader(cfg, mapper=None):
     dataset = DatasetFromList(dataset_dicts, copy=False)
 
     if mapper is None:
-        # data transforms
         mapper = DatasetMapper(cfg, True)
     dataset = MapDataset(dataset, mapper)
 
@@ -328,7 +313,6 @@ def build_detection_train_loader(cfg, mapper=None):
     else:
         raise ValueError("Unknown training sampler: {}".format(sampler_name))
 
-    # get data by aspect
     if cfg.DATALOADER.ASPECT_RATIO_GROUPING:
         data_loader = torch.utils.data.DataLoader(
             dataset,
