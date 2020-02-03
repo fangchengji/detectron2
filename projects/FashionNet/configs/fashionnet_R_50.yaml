@@ -8,10 +8,8 @@ MODEL:
     NAME: "build_resnet_backbone"
   RESNETS:
     DEPTH: 50
-    #OUT_FEATURES: ["res3", "res4", "res5"]
     OUT_FEATURES: ["res5"]
   ANCHOR_GENERATOR:
-    #SIZES: !!python/object/apply:eval ["[[x, x * 2**(1.0/3), x * 2**(2.0/3) ] for x in [32, 64, 128, 256, 512 ]]"]
     SIZES: [[32, 64, 128, 256, 512]]
 #  FPN:
 #    IN_FEATURES: ["res3", "res4", "res5"]
@@ -29,7 +27,7 @@ DATALOADER:
   REPEAT_THRESHOLD: 0.25
 SOLVER:
   IMS_PER_BATCH: 16
-  BASE_LR: 0.001  # Note that RetinaNet uses a different default learning rate
+  BASE_LR: 0.001
   STEPS: (60000, 80000)
   MAX_ITER: 90000
 INPUT:
