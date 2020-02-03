@@ -11,3 +11,4 @@ of support or stability of detectron2.
 + [TensorMask: A Foundation for Dense Object Segmentation](TensorMask)
 + [Mesh R-CNN](https://github.com/facebookresearch/meshrcnn)
 + [PointRend: Image Segmentation as Rendering](PointRend)
++ [FashionNet: Shopee's Fashion Video Generation](FashionNet)
