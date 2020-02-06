@@ -236,7 +236,7 @@ class FashionNet(nn.Module):
             reduction="sum",
         ) / max(1, num_foreground)
 
-        return {"loss_cls": loss_cls, "loss_box_reg": loss_box_reg}
+        return {"loss_cls": 3 * loss_cls, "loss_box_reg": 3 * loss_box_reg}
 
     def classification_losses(self, gt_classes, pred_class_logits):
         """
@@ -541,29 +541,6 @@ class FashionClassificationHead(nn.Module):
             self.total_classes = num_classes
         else:
             raise Exception("FashionNet FASHIONNET.CLASSIFICATION_HEAD.NUM_CLASSES needs list or int.")
-
-        #cls_subnet = []
-        #for _ in range(num_convs):
-        #    cls_subnet.append(
-        #        nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
-        #    )
-        #    cls_subnet.append(nn.ReLU())
-
-        #self.cls_subnet = nn.Sequential(*cls_subnet)
-        #self.cls_score = nn.Conv2d(
-        #   in_channels, total_classes, kernel_size=3, stride=1, padding=1
-        #)
-
-        # Initialization
-        #for modules in [self.cls_subnet, self.cls_score]:
-        #    for layer in modules.modules():
-        #        if isinstance(layer, nn.Conv2d):
-        #            torch.nn.init.normal_(layer.weight, mean=0, std=0.01)
-        #            torch.nn.init.constant_(layer.bias, 0)
-
-        ## Use prior in model initialization to improve stability
-        #bias_value = -math.log((1 - prior_prob) / prior_prob)
-        #torch.nn.init.constant_(self.cls_score.bias, bias_value)
 
         # resnet fc for classification tasks
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))

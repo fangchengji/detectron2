@@ -419,7 +419,7 @@ def register_all_fashion(root="datasets"):
        )
 
 
-_DATASETS_ROOT = "/data/fangcheng.ji/datasets"
+_DATASETS_ROOT = "../../datasets"
 register_all_fashion(_DATASETS_ROOT)
 
 
