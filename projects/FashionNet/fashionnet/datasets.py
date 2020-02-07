@@ -4,6 +4,9 @@ import logging
 import contextlib
 import os
 import datetime
+import sys
+import time
+import copy
 import json
 import numpy as np
 
@@ -16,7 +19,15 @@ from fvcore.common.file_io import PathManager, file_lock
 from detectron2.data import MetadataCatalog, DatasetCatalog
 
 from pycocotools.coco import COCO
+import pycocotools.mask as maskUtils
 from collections import defaultdict
+
+PYTHON_VERSION = sys.version_info[0]
+if PYTHON_VERSION == 2:
+    from urllib import urlretrieve
+elif PYTHON_VERSION == 3:
+    from urllib.request import urlretrieve
+
 
 """
 This file contains functions to parse COCO-format annotations into dicts in "Detectron2 format".

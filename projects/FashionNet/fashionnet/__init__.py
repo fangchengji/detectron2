@@ -2,10 +2,10 @@
 from .samplers import InferenceSampler, RepeatFactorTrainingSampler, TrainingSampler
 from .dataset_mapper import DatasetMapper
 from .config import add_fashionnet_config
-from .evaluator import FashionNetCOCOEvaluator
 from .data_build import build_detection_test_loader, build_detection_train_loader
 from .predictor import VisualizationDemo
 from .fashionnet import FashionNet
+from .fashion_evaluation import FashionEvaluator
 from . import datasets  # ensure the datasets are registered
 #from .grouped_batch_sampler import GroupedBatchSampler
 

@@ -399,7 +399,7 @@ class Visualizer:
         if category_id == 1:
             label = label + ', ' + part_label[0] + ', ' + toward_label[0]
 
-        text_pos = (0, 0)
+        text_pos = (2, 2)
         horiz_align = "left"
 
         height_ratio = self.output.height / np.sqrt(self.output.height * self.output.width)

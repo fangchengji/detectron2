@@ -9,15 +9,12 @@ from detectron2.config import get_cfg
 from detectron2.data import MetadataCatalog
 from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, hooks, launch
 from detectron2.evaluation import (
-    COCOEvaluator,
     DatasetEvaluators,
     verify_results,
 )
-from detectron2.modeling import GeneralizedRCNNWithTTA
 from detectron2.utils.logger import setup_logger
-#from detectron2.data import build_detection_test_loader, build_detection_train_loader
 
-from fashionnet import add_fashionnet_config, FashionNetCOCOEvaluator, DatasetMapper
+from fashionnet import add_fashionnet_config, FashionEvaluator, DatasetMapper
 from fashionnet import build_detection_train_loader, build_detection_test_loader
 
 class Trainer(DefaultTrainer):
@@ -39,19 +36,10 @@ class Trainer(DefaultTrainer):
         """
         if output_folder is None:
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
-        evaluator_type = MetadataCatalog.get(dataset_name).evaluator_type
 
-        evaluator_list = [COCOEvaluator(dataset_name, cfg, True, output_folder)]
-        #evaluator_list.append(FashionNetCOCOEvaluator(dataset_name, True, output_folder))
+        # need to merge this two evaluator
+        evaluator_list = [FashionEvaluator(dataset_name, cfg, True, output_folder)]
 
-        if len(evaluator_list) == 0:
-            raise NotImplementedError(
-                "no Evaluator for the data {} with the type {}".format(
-                    dataset_name, evaluator_type
-                )
-            )
-        elif len(evaluator_list) == 1:
-            return evaluator_list[0]
         return DatasetEvaluators(evaluator_list)
 
     @classmethod
