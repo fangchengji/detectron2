@@ -15,3 +15,10 @@ python train_net.py --num-gpus 2 \
     --config-file configs/fashionnet_R_50.yaml \
     --dist-url auto
 ```
+3. Evaluation
+```
+cd projects/FashionNet
+python train_net.py --num-gpus 1 \
+    --config-file configs/fashionnet_R_50.yaml \
+    --dist-url auto --eval-only
+```
