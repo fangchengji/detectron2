@@ -246,20 +246,22 @@ class FashionEvaluator(DatasetEvaluator):
         self._results["classification"] = res
 
     def _calculate_accuracy_recall(self, gts, preds):
+        cat = self._metadata.get("classification_classes", None)
         assert len(preds) > 0 and len(gts)
         image_to_idx = {}
+        gt_cls_count = [0 for i in range(5)]
         for i, c in enumerate(gts):
             image_to_idx[c["image_id"]] = i
+            gt_cls_count[c["category2_id"]] += 1
 
-        count = 0
-        c_model = 0
-        c_part = 0
-        c_toward = 0
+        count, c_model, c_part, c_toward = 0, 0, 0, 0
+        cls_count = [0 for i in range(5)]
         for pd in preds:
             gt_idx = image_to_idx[pd["image_id"]]
             gt = gts[gt_idx]
             if gt["category2_id"] == pd["category_id"]:
                 count += 1
+                cls_count[pd["category_id"]] += 1
             if gt["category2_id"] == 2:
                 c_model += 1
                 if pd["toward"] == gt["toward"]:
@@ -270,7 +272,13 @@ class FashionEvaluator(DatasetEvaluator):
         accuracy = float(count) / float(len(gts))
         part_accuracy = float(c_part) / float(c_model)
         toward_accuracy = float(c_toward) / float(c_model)
+        cls_acc = {}
+        for i, (pd, gt) in enumerate(zip(cls_count, gt_cls_count)):
+            if not gt == 0:
+                cls_acc[cat[i-1] + "_acc"] = float(pd) / float(gt)
+
         results = {"accuracy": accuracy, "part_accuracy": part_accuracy, "toward_accuracy": toward_accuracy}
+        results.update(cls_acc)
 
         self._logger.info(
             "Evaluation results for classification: \n" + create_small_table(results)

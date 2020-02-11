@@ -48,6 +48,10 @@ _PREDEFINED_FASHION = {
     "fashion_train_5w": (
         "deepfashion2/train/image",
         "deepfashion2/train/filtered_5w.json",
+    ),
+    "fashion_validation_14k": (
+        "deepfashion2/validation/image",
+        "deepfashion2/validation/filtered_14k.json",
     )
 }
 
