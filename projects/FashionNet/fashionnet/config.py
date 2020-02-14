@@ -36,3 +36,10 @@ def add_fashionnet_config(cfg):
     # This improves training stability in the case of heavy class imbalance.
     _C.MODEL.FASHIONNET.CLASSIFICATION_HEAD.PRIOR_PROB = 0.01
 
+    # ---------------------------------------------------------------------------- #
+    # DenseBox
+    # ---------------------------------------------------------------------------- #
+    _C.MODEL.DENSEBOX = CN()
+    _C.MODEL.DENSEBOX.OUT_CHANNELS = 128
+    _C.MODEL.DENSEBOX.OUT_FEATURES = ['res4d']
+

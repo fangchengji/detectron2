@@ -275,7 +275,8 @@ class FashionNet(nn.Module):
             reduction="sum",
         ) / num_batchs
 
-
+        loss_part = 0
+        loss_toward = 0
         if num_model > 0:
             loss_part = sigmoid_focal_loss_jit(
                 pred_part[valid_idxs].flatten(),
@@ -295,12 +296,9 @@ class FashionNet(nn.Module):
                 reduction="sum",
             ) / max(1, num_model)
 
-            return {"loss_category": loss_category,
-                    "loss_part": loss_part,
-                    "loss_toward": loss_toward}
-        else:
-            return {"loss_category": loss_category}
-
+        return {"loss_category": loss_category,
+                "loss_part": loss_part,
+                "loss_toward": loss_toward}
 
     @torch.no_grad()
     def get_ground_truth(self, anchors, targets):

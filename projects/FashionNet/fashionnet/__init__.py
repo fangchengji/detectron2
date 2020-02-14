@@ -5,6 +5,7 @@ from .config import add_fashionnet_config
 from .data_build import build_detection_test_loader, build_detection_train_loader
 from .predictor import VisualizationDemo
 from .fashionnet import FashionNet
+from .densebox import DenseboxNoBrranchConv32T
 from .fashion_evaluation import FashionEvaluator
 from . import datasets  # ensure the datasets are registered
 #from .grouped_batch_sampler import GroupedBatchSampler

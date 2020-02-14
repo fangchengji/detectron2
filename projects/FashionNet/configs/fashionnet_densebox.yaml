@@ -1,20 +1,18 @@
 MODEL:
   META_ARCHITECTURE: "FashionNet"
-  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
-  #WEIGHTS: "output/model_0059999.pth"
+  #WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  #WEIGHTS: "output/model_0049999.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   BACKBONE:
-    NAME: "build_resnet_backbone"
-  RESNETS:
-    DEPTH: 50
-    OUT_FEATURES: ["res5"]
+    NAME: "DenseboxNoBrranchConv32T"
+  DENSEBOX:
+    OUT_CHANNELS: 128
+    OUT_FEATURES: ["res4d"]
   ANCHOR_GENERATOR:
     SIZES: [[32, 64, 128, 256, 512]]
-#  FPN:
-#    IN_FEATURES: ["res3", "res4", "res5"]
   RETINANET:
-    IN_FEATURES: ["res5"]
+    IN_FEATURES: ["res4d"]
     NUM_CLASSES: 13
     IOU_THRESHOLDS: [0.4, 0.5]
     IOU_LABELS: [0, -1, 1]
@@ -28,7 +26,7 @@ DATALOADER:
   SAMPLER_TRAIN: "RepeatFactorTrainingSampler"
   REPEAT_THRESHOLD: 0.25
 SOLVER:
-  IMS_PER_BATCH: 16
+  IMS_PER_BATCH: 12
   BASE_LR: 0.001
   STEPS: (60000, 80000)
   MAX_ITER: 90000
@@ -37,5 +35,5 @@ INPUT:
   #MIN_SIZE_TRAIN_SAMPLING: "choice"
 TEST:
   EVAL_PERIOD: 10000
-OUTPUT_DIR: "./output"
+OUTPUT_DIR: "./output/densebox"
 VERSION: 2

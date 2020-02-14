@@ -49,9 +49,31 @@ _PREDEFINED_FASHION = {
         "deepfashion2/train/image",
         "deepfashion2/train/filtered_5w.json",
     ),
+    "fashion_train_user_commodity_5w": (
+        "deepfashion2/train/image",
+        "deepfashion2/train/filtered_user_commodity_5w.json",
+    ),
+    "fashion_train_commodity_10w": (
+        "deepfashion2/train/image",
+        "deepfashion2/train/filtered_commodity_10w.json",
+    ),
+    "fashion_train_crop_5k": (
+        "deepfashion2/train/crop_5k",
+        "deepfashion2/train/crop_5k.json",
+    ),
+
+    # validation datasets
     "fashion_validation_14k": (
         "deepfashion2/validation/image",
         "deepfashion2/validation/filtered_14k.json",
+    ),
+    "fashion_validation_merged_v1": (
+        "deepfashion2/validation/image",
+        "deepfashion2/validation/merged_v1.json",
+    ),
+    "fashion_validation_crop": (
+        "deepfashion2/validation/crop",
+        "deepfashion2/validation/crop_500.json",
     )
 }
 

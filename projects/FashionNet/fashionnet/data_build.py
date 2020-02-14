@@ -414,7 +414,7 @@ def load_detection_data_sampler(sampler_module):
 
     # META_ARCHITECTURE can only be like "projects.FashionNet.fashionnet.**" \
     # or use the detectron2 sampler
-    if len(split) > 2:
+    if len(split) > 1:
         sampler_meta = import_class(sampler_module)
         return sampler_meta
 
