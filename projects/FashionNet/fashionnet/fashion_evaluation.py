@@ -269,13 +269,13 @@ class FashionEvaluator(DatasetEvaluator):
                 if pd["part"] == gt["part"]:
                     c_part += 1
 
-        accuracy = float(count) / (float(len(gts)) + 0.0001)
-        part_accuracy = float(c_part) / (float(c_model) + 0.0001)
-        toward_accuracy = float(c_toward) / (float(c_model) + 0.0001)
+        accuracy = float(count) / (float(len(gts)) + 0.0001) * 100
+        part_accuracy = float(c_part) / (float(c_model) + 0.0001) * 100
+        toward_accuracy = float(c_toward) / (float(c_model) + 0.0001) * 100
         cls_acc = {}
         for i, (pd, gt) in enumerate(zip(cls_count, gt_cls_count)):
             if not gt == 0:
-                cls_acc[cat[i-1] + "_acc"] = float(pd) / (float(gt) + 0.0001)
+                cls_acc[cat[i-1] + "_acc"] = float(pd) / (float(gt) + 0.0001) * 100
 
         results = {"accuracy": accuracy, "part_accuracy": part_accuracy, "toward_accuracy": toward_accuracy}
         results.update(cls_acc)

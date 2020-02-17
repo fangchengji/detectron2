@@ -5,6 +5,7 @@ from typing import List
 import torch
 from fvcore.nn import sigmoid_focal_loss_jit, smooth_l1_loss
 from torch import nn
+from torch.nn import functional as F
 
 from detectron2.layers import ShapeSpec, batched_nms, cat
 from detectron2.structures import Boxes, ImageList, Instances, pairwise_iou
@@ -85,6 +86,7 @@ class FashionNet(nn.Module):
         self.classification_tasks = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.TASK_NAMES
         self.classification_classes = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CLASSES
         assert(len(self.classification_classes) == len(self.classification_tasks))
+        self._activation = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.ACTIVATION
 
         self.backbone = build_backbone(cfg)
 
@@ -267,13 +269,22 @@ class FashionNet(nn.Module):
         num_model = valid_idxs.sum()
 
         # category loss
-        loss_category = sigmoid_focal_loss_jit(
-            pred_category.flatten(),
-            gt_classes[self.classification_tasks[0]].to(dtype=data_type),
-            alpha=self.focal_loss_alpha,
-            gamma=self.focal_loss_gamma,
-            reduction="sum",
-        ) / num_batchs
+        if self._activation == 'sigmoid':
+            loss_category = sigmoid_focal_loss_jit(
+                pred_category.flatten(),
+                gt_classes[self.classification_tasks[0]].to(dtype=data_type),
+                alpha=self.focal_loss_alpha,
+                gamma=self.focal_loss_gamma,
+                reduction="sum",
+            ) / num_batchs
+        elif self._activation == 'softmax':
+            gt_category = torch.argmax(gt_classes[self.classification_tasks[0]].view(num_batchs, -1))
+            loss_category = F.cross_entropy(
+                pred_category,
+                gt_category,
+                reduction="mean")
+        else:
+            raise Exception("Not implement classification activation!")
 
         loss_part = 0
         loss_toward = 0
@@ -386,7 +397,16 @@ class FashionNet(nn.Module):
 
     def inference_classification(self, pred_logits):
         results = []
-        pred_logits.sigmoid_()
+        if self._activation == 'sigmoid':
+            pred_logits.sigmoid_()
+        elif self._activation == 'softmax':
+            pred_logits[:, : self.classification_classes[0]] = F.softmax(
+                pred_logits[:, : self.classification_classes[0]],
+                dim=1
+            )
+            pred_logits[:, self.classification_classes[0]:].sigmoid_()
+        else:
+            raise Exception('Activation is not implemented!!')
 
         batch_nums = pred_logits.size()[0]
 
@@ -527,10 +547,10 @@ class FashionClassificationHead(nn.Module):
     def __init__(self, cfg, input_shape: List[ShapeSpec]):
         super().__init__()
         # fmt: off
-        in_channels      = input_shape[0].channels
-        num_classes      = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CLASSES
-        num_convs        = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CONVS
-        prior_prob       = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.PRIOR_PROB
+        in_channels = input_shape[0].channels
+        num_classes = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CLASSES
+        num_convs = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CONVS
+        prior_prob = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.PRIOR_PROB
         # fmt: on
         # for multi classification tasks
         if isinstance(num_classes, list):
