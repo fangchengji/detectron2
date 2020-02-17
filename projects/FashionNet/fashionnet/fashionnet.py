@@ -278,7 +278,7 @@ class FashionNet(nn.Module):
                 reduction="sum",
             ) / num_batchs
         elif self._activation == 'softmax':
-            gt_category = torch.argmax(gt_classes[self.classification_tasks[0]].view(num_batchs, -1))
+            gt_category = torch.argmax(gt_classes[self.classification_tasks[0]].view(num_batchs, -1), dim=1)
             loss_category = F.cross_entropy(
                 pred_category,
                 gt_category,
