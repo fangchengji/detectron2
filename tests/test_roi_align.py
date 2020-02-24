@@ -3,6 +3,7 @@ import numpy as np
 import unittest
 import cv2
 import torch
+from fvcore.common.benchmark import benchmark
 
 from detectron2.layers.roi_align import ROIAlign
 
@@ -69,18 +70,83 @@ class ROIAlignTest(unittest.TestCase):
 
         rois = [0] + list(box)
         rois = torch.from_numpy(np.asarray(rois)[None, :].astype("float32"))
-        output = op.forward(input, rois).numpy()
+        output = op.forward(input, rois)
         if torch.cuda.is_available():
-            output_cuda = op.forward(input.cuda(), rois.cuda()).cpu().numpy()
-            self.assertTrue(np.allclose(output, output_cuda))
+            output_cuda = op.forward(input.cuda(), rois.cuda()).cpu()
+            self.assertTrue(torch.allclose(output, output_cuda))
         return output[0, 0]
+
+    def _simple_roialign_with_grad(self, img, box, resolution, device):
+        if isinstance(resolution, int):
+            resolution = (resolution, resolution)
+
+        op = ROIAlign(resolution, 1.0, 0, aligned=True)
+        input = torch.from_numpy(img[None, None, :, :].astype("float32"))
+
+        rois = [0] + list(box)
+        rois = torch.from_numpy(np.asarray(rois)[None, :].astype("float32"))
+        input = input.to(device=device)
+        rois = rois.to(device=device)
+        input.requires_grad = True
+        output = op.forward(input, rois)
+        return input, output
 
     def test_empty_box(self):
         img = np.random.rand(5, 5)
         box = [3, 4, 5, 4]
         o = self._simple_roialign(img, box, 7)
+        self.assertTrue(o.shape == (7, 7))
         self.assertTrue((o == 0).all())
+
+        for dev in ["cpu"] + ["cuda"] if torch.cuda.is_available() else []:
+            input, output = self._simple_roialign_with_grad(img, box, 7, torch.device(dev))
+            output.sum().backward()
+            self.assertTrue(torch.allclose(input.grad, torch.zeros_like(input)))
+
+    def test_empty_batch(self):
+        input = torch.zeros(0, 3, 10, 10, dtype=torch.float32)
+        rois = torch.zeros(0, 5, dtype=torch.float32)
+        op = ROIAlign((7, 7), 1.0, 0, aligned=True)
+        output = op.forward(input, rois)
+        self.assertTrue(output.shape == (0, 3, 7, 7))
+
+
+def benchmark_roi_align():
+    from detectron2 import _C
+
+    def random_boxes(mean_box, stdev, N, maxsize):
+        ret = torch.rand(N, 4) * stdev + torch.tensor(mean_box, dtype=torch.float)
+        ret.clamp_(min=0, max=maxsize)
+        return ret
+
+    def func(N, C, H, W, nboxes_per_img):
+        input = torch.rand(N, C, H, W)
+        boxes = []
+        batch_idx = []
+        for k in range(N):
+            b = random_boxes([80, 80, 130, 130], 24, nboxes_per_img, H)
+            # try smaller boxes:
+            # b = random_boxes([100, 100, 110, 110], 4, nboxes_per_img, H)
+            boxes.append(b)
+            batch_idx.append(torch.zeros(nboxes_per_img, 1, dtype=torch.float32) + k)
+        boxes = torch.cat(boxes, axis=0)
+        batch_idx = torch.cat(batch_idx, axis=0)
+        boxes = torch.cat([batch_idx, boxes], axis=1)
+
+        input = input.cuda()
+        boxes = boxes.cuda()
+
+        def bench():
+            _C.roi_align_forward(input, boxes, 1.0, 7, 7, 0, True)
+            torch.cuda.synchronize()
+
+        return bench
+
+    args = [dict(N=2, C=512, H=256, W=256, nboxes_per_img=500)]
+    benchmark(func, "cuda_roialign", args, num_iters=20, warmup_iters=1)
 
 
 if __name__ == "__main__":
+    if torch.cuda.is_available():
+        benchmark_roi_align()
     unittest.main()

@@ -13,6 +13,10 @@ In this repository, we release code for PointRend in Detectron2. PointRend can b
 ## Installation
 Install Detectron 2 following [INSTALL.md](https://github.com/facebookresearch/detectron2/blob/master/INSTALL.md). You are ready to go!
 
+## Quick start and visualization
+
+This [Colab Notebook](https://colab.research.google.com/drive/1isGPL5h5_cKoPPhVL9XhMokRtHDvmMVL) tutorial contains examples of PointRend usage and visualisations of its point sampling stages.
+
 ## Training
 
 To train a model with 8 GPUs run:
@@ -51,7 +55,7 @@ python train_net.py --config-file configs/InstanceSegmentation/pointrend_rcnn_R_
 <td align="center">1&times;</td>
 <td align="center">224&times;224</td>
 <td align="center">36.2</td>
-<td align="center">38.3</td>
+<td align="center">39.7</td>
 <td align="center">164254221</td>
 <td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_1x_coco/164254221/model_final_88c6f8.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_1x_coco/164254221/metrics.json">metrics</a></td>
 </tr>
@@ -60,13 +64,13 @@ python train_net.py --config-file configs/InstanceSegmentation/pointrend_rcnn_R_
 <td align="center">3&times;</td>
 <td align="center">224&times;224</td>
 <td align="center">38.3</td>
-<td align="center">40.2</td>
+<td align="center">41.6</td>
 <td align="center">164955410</td>
 <td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_3c3198.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/metrics.json">metrics</a></td>
 </tr>
 </tbody></table>
 
-AP&ast; is COCO mask AP evaluated against the higher-quality LVIS annotations; see the paper for details.
+AP&ast; is COCO mask AP evaluated against the higher-quality LVIS annotations; see the paper for details. Run `python detectron2/datasets/prepare_cocofied_lvis.py` to prepare GT files for AP&ast; evaluation. Since LVIS annotations are not exhaustive `lvis-api` and not `cocoapi` should be used to evaluate AP&ast;.
 
 #### Cityscapes
 Cityscapes model is trained with ImageNet pretraining.
