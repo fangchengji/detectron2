@@ -7,6 +7,8 @@ inference_test_output
 *.jpg
 *.png
 *.txt
+*.json
+*.diff
 
 # compilation and distribution
 __pycache__
@@ -16,6 +18,7 @@ _ext
 detectron2.egg-info/
 build/
 dist/
+wheels/
 
 # pytorch/python/numpy formats
 *.pth
@@ -32,10 +35,12 @@ dist/
 *.swp
 *~
 
-# Pycharm editor settings
+# editor settings
 .idea
+.vscode
 
 # project dirs
 /detectron2/model_zoo/configs
 /datasets
+/projects/*/datasets
 /models
