@@ -87,6 +87,7 @@ class FashionNet(nn.Module):
         self.classification_classes = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CLASSES
         assert(len(self.classification_classes) == len(self.classification_tasks))
         self._activation = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.ACTIVATION
+        self._fashion_score_threshold = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.SCORE_THRESH
 
         self.backbone = build_backbone(cfg)
 
@@ -154,7 +155,7 @@ class FashionNet(nn.Module):
 
         if self.training:
             losses = {}
-            gt_classes, gt_anchors_reg_deltas = self.get_ground_truth(anchors, gt_instances)
+            gt_classes, gt_anchors_reg_deltas = self.get_ground_truth(anchors, gt_instances, gt_classification)
             losses.update(
                 self.detection_losses(
                     gt_classes,
@@ -188,6 +189,8 @@ class FashionNet(nn.Module):
                 height = input_per_image.get("height", image_size[0])
                 width = input_per_image.get("width", image_size[1])
                 r = detector_postprocess(results_per_image, height, width)
+                # if category is not commodity or model
+                r = self.filter_output_objects(category2, r)
                 processed_results.append({"instances": r, "classification": category2})
             return processed_results
 
@@ -312,7 +315,7 @@ class FashionNet(nn.Module):
                 "loss_toward": loss_toward}
 
     @torch.no_grad()
-    def get_ground_truth(self, anchors, targets):
+    def get_ground_truth(self, anchors, targets, gt_classification):
         """
         Args:
             anchors (list[list[Boxes]]): a list of N=#image elements. Each is a
@@ -344,7 +347,7 @@ class FashionNet(nn.Module):
         anchors = [Boxes.cat(anchors_i) for anchors_i in anchors]
         # list[Tensor(R, 4)], one for each image
 
-        for anchors_per_image, targets_per_image in zip(anchors, targets):
+        for anchors_per_image, targets_per_image, classification_per_image in zip(anchors, targets, gt_classification):
             match_quality_matrix = pairwise_iou(targets_per_image.gt_boxes, anchors_per_image)
             gt_matched_idxs, anchor_labels = self.matcher(match_quality_matrix)
 
@@ -365,6 +368,15 @@ class FashionNet(nn.Module):
                 gt_classes_i = torch.zeros_like(gt_matched_idxs) + self.num_classes
                 gt_anchors_reg_deltas_i = torch.zeros_like(anchors_per_image.tensor)
 
+            # only commodity and model data do object detection,
+            # other type ignore all anchors
+            object_detection_enable = classification_per_image.gt_classes == 0 \
+                                      or classification_per_image.gt_classes == 1
+
+            if not object_detection_enable:
+                # Anchors with label -1 are ignored.
+                gt_classes_i[:] = -1
+
             gt_classes.append(gt_classes_i)
             gt_anchors_deltas.append(gt_anchors_reg_deltas_i)
 
@@ -379,7 +391,7 @@ class FashionNet(nn.Module):
         for anno in targets:
             for task, num_classes in zip(self.classification_tasks, self.classification_classes):
                 tmp = torch.zeros(num_classes, dtype=torch.int32, device=self.device)
-                if task == "category2_id":
+                if task == "category":
                     idx = anno.gt_classes
                 elif task == "part":
                     idx = anno.gt_part
@@ -390,6 +402,8 @@ class FashionNet(nn.Module):
 
                 if idx >= 0:
                     tmp[idx] = 1
+                else:
+                    tmp[:] = -1
 
                 gts[task] = torch.cat((gts[task], tmp))
 
@@ -428,8 +442,13 @@ class FashionNet(nn.Module):
 
         for i in range(0, batch_nums):
             result = Instances((0, 0))
-            result.category_id = pred_category_id[i]
-            result.category_score = pred_category_score[i]
+            if pred_category_score[i] > self._fashion_score_threshold:
+                result.category_id = pred_category_id[i]
+                result.category_score = pred_category_score[i]
+            else:
+                # if score < threshold, let it as the last class.
+                result.category_id = torch.tensor([self.classification_classes[0] - 1], device=self.device)
+                result.category_score = torch.tensor([0], device=self.device)
             result.part = pred_part_id[i]
             result.part_score = pred_part_score[i]
             result.toward = pred_toward_id[i]
@@ -537,6 +556,18 @@ class FashionNet(nn.Module):
         images = [self.normalizer(x) for x in images]
         images = ImageList.from_tensors(images, self.backbone.size_divisibility)
         return images
+
+    def filter_output_objects(self, classification, detection):
+        # if category is not commodity or model,
+        # delete the objects
+        if classification.category_id > 1:
+            detection.remove('pred_boxes')
+            detection.remove('scores')
+            detection.remove('pred_classes')
+            detection.pred_boxes = Boxes(torch.randn(0, 4, device=self.device))
+            detection.scores = torch.tensor([], device=self.device)
+            detection.pred_classes = torch.tensor([], device=self.device)
+        return detection
 
 
 class FashionClassificationHead(nn.Module):

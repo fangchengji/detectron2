@@ -241,21 +241,24 @@ class FashionEvaluator(DatasetEvaluator):
 
         self._logger.info("Evaluating classification...")
 
-        res = self._calculate_accuracy_recall(self._fashion_api.dataset["annotations2"], \
-                                                    self._classification_results)
+        res = self._calculate_accuracy_recall(
+            self._fashion_api.dataset["annotations2"],
+            self._classification_results
+        )
         self._results["classification"] = res
 
     def _calculate_accuracy_recall(self, gts, preds):
         cat = self._metadata.get("classification_classes", None)
+        num_cls = len(cat)
         assert len(preds) > 0 and len(gts)
         image_to_idx = {}
-        gt_cls_count = [0 for i in range(5)]
+        gt_cls_count = [0 for i in range(num_cls + 1)]
         for i, c in enumerate(gts):
             image_to_idx[c["image_id"]] = i
             gt_cls_count[c["category2_id"]] += 1
 
         count, c_model, c_part, c_toward = 0, 0, 0, 0
-        cls_count = [0 for i in range(5)]
+        cls_count = [0 for i in range(num_cls + 1)]
         for pd in preds:
             gt_idx = image_to_idx[pd["image_id"]]
             gt = gts[gt_idx]

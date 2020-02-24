@@ -74,6 +74,20 @@ _PREDEFINED_FASHION = {
     "fashion_validation_crop": (
         "deepfashion2/validation/crop",
         "deepfashion2/validation/crop_500.json",
+    ),
+
+    #shopee_fashion
+    "shopee_fashion_train_6k": (
+        "shopee_fashion/train/image",
+        "shopee_fashion/train/shopee_train_6k.json",
+    ),
+    "shopee_fashion_train_3k": (
+        "shopee_fashion/train_3k/image",
+        "shopee_fashion/train_3k/shopee_train_3k.json",
+    ),
+    "shopee_fashion_new_test": (
+        "shopee_fashion/new_test/image",
+        "shopee_fashion/new_test/shopee_new_test.json"
     )
 }
 
@@ -96,7 +110,7 @@ CLOTHES_CATEGORIES = [
     {"color": [175, 116, 175], "isthing": 1, "id": 13, "name": "sling_dress"}
 ]
 
-CATEGORY2_CLASSES = ['commodity', 'model', 'detail', 'specification']
+CATEGORY2_CLASSES = ['commodity', 'model', 'detail', 'specification', 'unknown']
 PART_CLASSES = ['top', 'down', 'whole']
 TOWARD_CLASSES = ['front', 'side or back']
 

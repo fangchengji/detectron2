@@ -23,10 +23,11 @@ def add_fashionnet_config(cfg):
     # ---------------------------------------------------------------------------- #
     _C.MODEL.FASHIONNET.CLASSIFICATION_HEAD = CN()
     # This is the classification tasks name.
-    _C.MODEL.FASHIONNET.CLASSIFICATION_HEAD.TASK_NAMES = ["category2_id", "part", "toward"]
+    _C.MODEL.FASHIONNET.CLASSIFICATION_HEAD.TASK_NAMES = ["category", "part", "toward"]
     # This is the number of foreground classes for each task.
-    _C.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CLASSES = [4, 3, 2]
+    _C.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CLASSES = [5, 3, 2]
     _C.MODEL.FASHIONNET.CLASSIFICATION_HEAD.ACTIVATION = 'softmax'
+    _C.MODEL.FASHIONNET.CLASSIFICATION_HEAD.SCORE_THRESH = 0.5
 
     # Convolutions to use in the cls and bbox tower
     # NOTE: this doesn't include the last conv for logits
