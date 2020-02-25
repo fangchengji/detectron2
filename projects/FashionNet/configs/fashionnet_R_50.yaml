@@ -1,7 +1,7 @@
 MODEL:
   META_ARCHITECTURE: "FashionNet"
-  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
-  #WEIGHTS: "output/model_0059999.pth"
+  #WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  #WEIGHTS: "output/mix_add2conv/model_0019999.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   BACKBONE:
@@ -9,6 +9,7 @@ MODEL:
   RESNETS:
     DEPTH: 50
     OUT_FEATURES: ["res5"]
+    NORM: 'BN'
   ANCHOR_GENERATOR:
     SIZES: [[32, 64, 128, 256, 512]]
 #  FPN:
@@ -18,15 +19,25 @@ MODEL:
     NUM_CLASSES: 13
     IOU_THRESHOLDS: [0.4, 0.5]
     IOU_LABELS: [0, -1, 1]
+  FASHIONNET:
+    CLASSIFICATION_HEAD:
+      ACTIVATION: 'softmax'
+      SCORE_THRESH: 0.5
 DATASETS:
-  TRAIN: ("fashion_train_5w", "fashion_train_user_commodity_5w","fashion_train_commodity_10w","fashion_train_crop_5k")
-  #TRAIN: ("fashion_train_test",)
-  TEST: ("fashion_validation_merged_v1",)
-  #TEST: ("fashion_train_test",)
+  TRAIN: >
+   ("fashion_train_5w",
+    "fashion_train_user_commodity_5w",
+    "fashion_train_commodity_10w",
+    "fashion_train_crop_5k",
+    "shopee_fashion_train_6k",
+    "shopee_fashion_train_3k",)
+#  TRAIN: ("shopee_fashion_train_6k", "shopee_fashion_train_3k",)
+  TEST: ("fashion_validation_merged_v1", "shopee_fashion_new_test",)
+#  TEST: ("shopee_fashion_new_test",)
 DATALOADER:
   FILTER_EMPTY_ANNOTATIONS: False
   SAMPLER_TRAIN: "RepeatFactorTrainingSampler"
-  REPEAT_THRESHOLD: 0.25
+  REPEAT_THRESHOLD: 0.2
 SOLVER:
   IMS_PER_BATCH: 16
   BASE_LR: 0.001
@@ -37,5 +48,5 @@ INPUT:
   #MIN_SIZE_TRAIN_SAMPLING: "choice"
 TEST:
   EVAL_PERIOD: 10000
-OUTPUT_DIR: "./output"
+OUTPUT_DIR: "./output/mix_add2conv"
 VERSION: 2

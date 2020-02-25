@@ -22,3 +22,10 @@ python train_net.py --num-gpus 1 \
     --config-file configs/fashionnet_R_50.yaml \
     --dist-url auto --eval-only
 ```
+
+4. Deployment
+```angular2
+python onnx_converter.py \
+    --config-file configs/fashionnet_R_50.yaml \
+    --output ./output
+```

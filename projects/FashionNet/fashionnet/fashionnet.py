@@ -82,14 +82,18 @@ class FashionNet(nn.Module):
         self.max_detections_per_image = cfg.TEST.DETECTIONS_PER_IMAGE
         # fmt: on
 
+        # for onnx model export
+        self.export_onnx = cfg.MODEL.FASHIONNET.EXPORT_ONNX
+
         # for classification task
         self.classification_tasks = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.TASK_NAMES
         self.classification_classes = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CLASSES
         assert(len(self.classification_classes) == len(self.classification_tasks))
-        self._activation = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.ACTIVATION
-        self._fashion_score_threshold = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.SCORE_THRESH
+        self.activation = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.ACTIVATION
+        self.fashion_score_threshold = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.SCORE_THRESH
 
         self.backbone = build_backbone(cfg)
+        self.size_divisibility = 32
 
         backbone_shape = self.backbone.output_shape()
         feature_shapes = [backbone_shape[f] for f in self.in_features]
@@ -129,27 +133,36 @@ class FashionNet(nn.Module):
             dict[str: Tensor]:
                 mapping from a named loss to a tensor storing the loss. Used during training only.
         """
-        images = self.preprocess_image(batched_inputs)
-        if "instances" in batched_inputs[0]:
-            gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
-        elif "targets" in batched_inputs[0]:
-            log_first_n(
-                logging.WARN, "'targets' in the model inputs is now renamed to 'instances'!", n=10
-            )
-            gt_instances = [x["targets"].to(self.device) for x in batched_inputs]
+        if self.export_onnx:
+            # skip the preprocess
+            net_input = batched_inputs
         else:
-            gt_instances = None
+            # do preprocess
+            images = self.preprocess_image(batched_inputs)
+            if "instances" in batched_inputs[0]:
+                gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
+            elif "targets" in batched_inputs[0]:
+                log_first_n(
+                    logging.WARN, "'targets' in the model inputs is now renamed to 'instances'!", n=10
+                )
+                gt_instances = [x["targets"].to(self.device) for x in batched_inputs]
+            else:
+                gt_instances = None
 
-        # for fashion classification task
-        if "classification" in batched_inputs[0]:
-            gt_classification = [x["classification"].to(self.device) for x in batched_inputs]
-        else:
-            gt_classification = None
+            # for fashion classification task
+            if "classification" in batched_inputs[0]:
+                gt_classification = [x["classification"].to(self.device) for x in batched_inputs]
+            else:
+                gt_classification = None
 
-        features = self.backbone(images.tensor)
+            net_input = images.tensor
+
+        features = self.backbone(net_input)
         features = [features[f] for f in self.in_features]
-        #box_cls, box_delta = self.head(features)
-        outputs = self.head(features)
+        detection_logits, detection_bbox_reg, classification_logits = self.head(features)
+
+        if self.export_onnx:
+            return detection_logits, detection_bbox_reg, classification_logits
 
         anchors = self.anchor_generator(features)
 
@@ -160,8 +173,8 @@ class FashionNet(nn.Module):
                 self.detection_losses(
                     gt_classes,
                     gt_anchors_reg_deltas,
-                    outputs["detection_logits"],
-                    outputs["detection_bbox_reg"]
+                    detection_logits,
+                    detection_bbox_reg
                 )
             )
 
@@ -169,18 +182,18 @@ class FashionNet(nn.Module):
             losses.update(
                 self.classification_losses(
                     gt_classification_classes,
-                    outputs["classification_logits"]
+                    classification_logits
                 )
             )
 
             return losses
         else:
-            results = self.inference(outputs["detection_logits"],
-                                     outputs["detection_bbox_reg"],
+            results = self.inference(detection_logits,
+                                     detection_bbox_reg,
                                      anchors,
                                      images.image_sizes)
 
-            category2_results = self.inference_classification(outputs["classification_logits"])
+            category2_results = self.inference_classification(classification_logits)
 
             processed_results = []
             for results_per_image, input_per_image, image_size, category2 in zip(
@@ -272,7 +285,7 @@ class FashionNet(nn.Module):
         num_model = valid_idxs.sum()
 
         # category loss
-        if self._activation == 'sigmoid':
+        if self.activation == 'sigmoid':
             loss_category = sigmoid_focal_loss_jit(
                 pred_category.flatten(),
                 gt_classes[self.classification_tasks[0]].to(dtype=data_type),
@@ -280,7 +293,7 @@ class FashionNet(nn.Module):
                 gamma=self.focal_loss_gamma,
                 reduction="sum",
             ) / num_batchs
-        elif self._activation == 'softmax':
+        elif self.activation == 'softmax':
             gt_category = torch.argmax(gt_classes[self.classification_tasks[0]].view(num_batchs, -1), dim=1)
             loss_category = F.cross_entropy(
                 pred_category,
@@ -289,26 +302,23 @@ class FashionNet(nn.Module):
         else:
             raise Exception("Not implement classification activation!")
 
-        loss_part = 0
-        loss_toward = 0
-        if num_model > 0:
-            loss_part = sigmoid_focal_loss_jit(
-                pred_part[valid_idxs].flatten(),
-                gt_classes[self.classification_tasks[1]].view(num_batchs, -1)[valid_idxs]\
-                    .flatten().to(dtype=data_type),
-                alpha=self.focal_loss_alpha,
-                gamma=self.focal_loss_gamma,
-                reduction="sum",
-            ) / max(1, num_model)
+        valid_part = gt_classes[self.classification_tasks[1]][:] > -1
+        loss_part = sigmoid_focal_loss_jit(
+            pred_part.flatten()[valid_part],
+            gt_classes[self.classification_tasks[1]].to(dtype=data_type)[valid_part],
+            alpha=self.focal_loss_alpha,
+            gamma=self.focal_loss_gamma,
+            reduction="sum",
+        ) / max(1, valid_part.sum() / self.classification_classes[1])
 
-            loss_toward = sigmoid_focal_loss_jit(
-                pred_toward[valid_idxs].flatten(),
-                gt_classes[self.classification_tasks[2]].view(num_batchs, -1)[valid_idxs]\
-                    .flatten().to(dtype=data_type),
-                alpha=self.focal_loss_alpha,
-                gamma=self.focal_loss_gamma,
-                reduction="sum",
-            ) / max(1, num_model)
+        valid_toward = gt_classes[self.classification_tasks[2]][:] > -1
+        loss_toward = sigmoid_focal_loss_jit(
+            pred_toward.flatten()[valid_toward],
+            gt_classes[self.classification_tasks[2]].to(dtype=data_type)[valid_toward],
+            alpha=self.focal_loss_alpha,
+            gamma=self.focal_loss_gamma,
+            reduction="sum",
+        ) / max(1, valid_toward.sum() / self.classification_classes[2])
 
         return {"loss_category": loss_category,
                 "loss_part": loss_part,
@@ -373,7 +383,7 @@ class FashionNet(nn.Module):
             object_detection_enable = classification_per_image.gt_classes == 0 \
                                       or classification_per_image.gt_classes == 1
 
-            if not object_detection_enable:
+            if not object_detection_enable or not has_gt:
                 # Anchors with label -1 are ignored.
                 gt_classes_i[:] = -1
 
@@ -403,6 +413,7 @@ class FashionNet(nn.Module):
                 if idx >= 0:
                     tmp[idx] = 1
                 else:
+                    # ignore the value
                     tmp[:] = -1
 
                 gts[task] = torch.cat((gts[task], tmp))
@@ -411,9 +422,9 @@ class FashionNet(nn.Module):
 
     def inference_classification(self, pred_logits):
         results = []
-        if self._activation == 'sigmoid':
+        if self.activation == 'sigmoid':
             pred_logits.sigmoid_()
-        elif self._activation == 'softmax':
+        elif self.activation == 'softmax':
             pred_logits[:, : self.classification_classes[0]] = F.softmax(
                 pred_logits[:, : self.classification_classes[0]],
                 dim=1
@@ -442,7 +453,7 @@ class FashionNet(nn.Module):
 
         for i in range(0, batch_nums):
             result = Instances((0, 0))
-            if pred_category_score[i] > self._fashion_score_threshold:
+            if pred_category_score[i] > self.fashion_score_threshold:
                 result.category_id = pred_category_id[i]
                 result.category_score = pred_category_score[i]
             else:
@@ -626,13 +637,36 @@ class FashionClassificationHead(nn.Module):
 class CombinedHead(nn.Module):
     def __init__(self, cfg, input_shape: List[ShapeSpec]):
         super().__init__()
-        self.detection = RetinaNetHead(cfg, input_shape)
-        self.classification = FashionClassificationHead(cfg, input_shape)
+        input_channels = input_shape[0].channels
+        self.detection_bridge = nn.Conv2d(input_channels, 256, kernel_size=1, stride=1, padding=0)
+        self.classification_bridge = nn.Conv2d(input_channels, 256, kernel_size=1, stride=1, padding=0)
+
+        self.detection_out = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+        self.classification_out = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+        from detectron2.layers import ShapeSpec
+        head_input_shape = [ShapeSpec(channels=256, stride=input_shape[0].stride)]
+
+        self.detection = RetinaNetHead(cfg, head_input_shape)
+        self.classification = FashionClassificationHead(cfg, head_input_shape)
 
     def forward(self, features):
-        detection_logits, detection_bbox_reg = self.detection.forward(features)
-        classification_logits, classification_bbox_reg = self.classification.forward(features)
+        class_features = []
+        object_features = []
+        for feature in features:
+            # class_features.append(self.classification_bridge(feature))
+            # object_features.append(self.detection_bridge(feature))
 
-        return {"detection_logits": detection_logits,
-                "classification_logits": classification_logits,
-                "detection_bbox_reg": detection_bbox_reg }
+            class_features.append(self.classification_out(self.classification_bridge(feature)))
+            object_features.append(self.detection_out(self.detection_bridge(feature)))
+
+        detection_logits, detection_bbox_reg = self.detection.forward(object_features)
+        classification_logits, classification_bbox_reg = self.classification.forward(class_features)
+
+        return detection_logits, detection_bbox_reg, classification_logits

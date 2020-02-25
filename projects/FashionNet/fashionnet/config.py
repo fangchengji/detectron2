@@ -17,6 +17,9 @@ def add_fashionnet_config(cfg):
     # FashionNet
     # ---------------------------------------------------------------------------- #
     _C.MODEL.FASHIONNET = CN()
+    # if export onnx model, it should only run forward the network
+    # skip the preprocess and postprocess
+    _C.MODEL.FASHIONNET.EXPORT_ONNX = False
 
     # ---------------------------------------------------------------------------- #
     # FashionNet Classification Head
