@@ -13,6 +13,9 @@ def add_fashionnet_config(cfg):
     # Add sampler meta module
     _C.DATALOADER.SAMPLER_META = "fashionnet.samplers"
 
+    # View the test error result
+    _C.TEST.VIEW_ERROR = False
+
     # ---------------------------------------------------------------------------- #
     # FashionNet
     # ---------------------------------------------------------------------------- #

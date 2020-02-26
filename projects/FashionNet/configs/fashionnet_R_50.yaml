@@ -9,7 +9,7 @@ MODEL:
   RESNETS:
     DEPTH: 50
     OUT_FEATURES: ["res5"]
-    NORM: 'BN'
+    NORM: 'FrozenBN'
   ANCHOR_GENERATOR:
     SIZES: [[32, 64, 128, 256, 512]]
 #  FPN:
@@ -48,5 +48,7 @@ INPUT:
   #MIN_SIZE_TRAIN_SAMPLING: "choice"
 TEST:
   EVAL_PERIOD: 10000
+  # export and visualize the error data.
+  VIEW_ERROR: False
 OUTPUT_DIR: "./output/mix_add2conv"
 VERSION: 2

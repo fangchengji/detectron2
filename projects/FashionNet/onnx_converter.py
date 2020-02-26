@@ -1,4 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import argparse
 import os
 import torch
@@ -36,6 +35,7 @@ def setup_cfg(args):
     add_fashionnet_config(cfg)
     # cuda context is initialized before creating dataloader, so we don't fork anymore
     cfg.DATALOADER.NUM_WORKERS = 0
+    # set export_onnx flag to true
     cfg.MODEL.FASHIONNET.EXPORT_ONNX = True
     cfg = add_export_config(cfg)
     cfg.merge_from_file(args.config_file)

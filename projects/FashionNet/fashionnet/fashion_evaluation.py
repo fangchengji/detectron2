@@ -8,6 +8,7 @@ import logging
 import numpy as np
 import os
 import pickle
+import time
 from collections import OrderedDict
 import pycocotools.mask as mask_util
 import torch
@@ -25,6 +26,7 @@ from detectron2.utils.logger import create_small_table
 
 from detectron2.evaluation import DatasetEvaluator
 
+from utils.visualizer import ColorMode, Visualizer
 
 class FashionEvaluator(DatasetEvaluator):
     """
@@ -77,6 +79,16 @@ class FashionEvaluator(DatasetEvaluator):
         # performed using the COCO evaluation server).
         self._do_evaluation = ("annotations" in self._fashion_api.dataset \
                                and "annotations2" in self._fashion_api.dataset)
+
+        self._view_error = cfg.TEST.VIEW_ERROR
+        if self._view_error:
+            self._error_output_path = self._output_dir + '/error_result'
+            os.makedirs(self._error_output_path, exist_ok=True)
+            with open(os.path.join(self._error_output_path, 'info.txt'), 'w') as f:
+                s = "time: " + time.strftime("%Y-%m-%d-%H:%M", time.localtime()) + "\n"
+                s += f"weight: {cfg.MODEL.WEIGHTS}\n"
+                s += f"dataset: {cfg.DATASETS.TEST}\n"
+                f.write(s)
 
     def reset(self):
         self._predictions = []
@@ -265,6 +277,10 @@ class FashionEvaluator(DatasetEvaluator):
             if gt["category2_id"] == pd["category_id"]:
                 count += 1
                 cls_count[pd["category_id"]] += 1
+            else:
+                if self._view_error:
+                    self._vis_result(gt, pd)
+
             if gt["category2_id"] == 2:
                 c_model += 1
                 if pd["toward"] == gt["toward"]:
@@ -288,6 +304,26 @@ class FashionEvaluator(DatasetEvaluator):
         )
 
         return results
+
+    def _vis_result(self, gt, pd, task="classification"):
+        from PIL import Image
+
+        vis_output = None
+        root_dir = self._metadata.get("image_root")
+        image_name = str(gt['image_id']).zfill(6)+'.jpg'
+        image_path = os.path.join(root_dir, image_name)
+        image = np.array(Image.open(image_path))
+        ## Convert image from OpenCV BGR format to Matplotlib RGB format.
+        #image = image[:, :, ::-1]
+        visualizer = Visualizer(image, self._metadata)
+
+        # add branch2 classification task result
+        if task == "classification":
+            vis_output = visualizer.draw_classification_gt_pd(gt, pd)
+
+        output_path = os.path.join(self._error_output_path, image_name)
+        vis_output.save(output_path)
+
 
     def _eval_box_proposals(self):
         """

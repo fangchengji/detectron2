@@ -419,6 +419,66 @@ class Visualizer:
 
         return self.output
 
+    def draw_classification_gt_pd(self, gt, pd):
+        """
+        Draw instance-level prediction results on an image.
+
+        Args:
+            gt: gt json
+            pred: prediction json
+        Returns:
+            output (VisImage): image object with visualizations.
+        """
+        category_id = [pd['category_id'] - 1]
+        category_score = [pd['category_score']]
+        category_label = _create_text_labels(category_id, category_score, self.metadata.get("category2_classes", None))
+
+        part = [pd['part'] - 1]
+        part_score = [pd['part_score']]
+        part_label = _create_text_labels(part, part_score, self.metadata.get("part_classes", None))
+
+        toward = [pd['toward'] - 1]
+        toward_score = [pd['toward_score']]
+        toward_label = _create_text_labels(toward, toward_score, self.metadata.get("toward_classes", None))
+
+        # gt
+        gt_category_id = [gt['category2_id'] - 1]
+        gt_category_label = _create_text_labels(gt_category_id, None, self.metadata.get("category2_classes", None))
+
+        gt_part = [gt['part'] - 1]
+        gt_part_label = _create_text_labels(gt_part, None, self.metadata.get("part_classes", None))
+
+        gt_toward = [gt['toward'] - 1]
+        gt_toward_label = _create_text_labels(gt_toward, None, self.metadata.get("toward_classes", None))
+
+        color = random_color(rgb=True, maximum=1)
+
+        label = f"predict: {category_label[0]}\n" + f"ground truth: {gt_category_label[0]}"
+        if gt_category_id[0] == 1:
+            label = label + '\n\n'\
+                    f"predict: {part_label[0]}, {toward_label[0]}\n" \
+                    f"ground truth: {gt_part_label[0]}, {gt_toward_label[0]}"
+
+        text_pos = (2, 2)
+        horiz_align = "left"
+
+        height_ratio = self.output.height / np.sqrt(self.output.height * self.output.width)
+        lighter_color = self._change_color_brightness(color, brightness_factor=0.7)
+        font_size = (
+                np.clip((height_ratio - 0.02) / 0.08 + 1, 1.2, 2)
+                * 0.5
+                * self._default_font_size
+        )
+        self.draw_text(
+            label,
+            text_pos,
+            color=lighter_color,
+            horizontal_alignment=horiz_align,
+            font_size=font_size,
+        )
+
+        return self.output
+
 
     def draw_sem_seg(self, sem_seg, area_threshold=None, alpha=0.8):
         """
