@@ -6,6 +6,7 @@ from .data_build import build_detection_test_loader, build_detection_train_loade
 from .predictor import VisualizationDemo
 from .fashionnet import FashionNet
 from .densebox import DenseboxNoBrranchConv32T
+from .efficientdet import EfficientNetBackbone
 from .fashion_evaluation import FashionEvaluator
 from . import datasets  # ensure the datasets are registered
 #from .grouped_batch_sampler import GroupedBatchSampler
