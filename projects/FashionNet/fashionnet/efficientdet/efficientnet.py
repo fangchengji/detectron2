@@ -250,6 +250,9 @@ class EfficientNetBackbone(Backbone):
 
         # Able to specify model size
         model = EfficientNet.from_pretrained(f'efficientnet-b{model_size}')
+        # For exporting to ONNX
+        if cfg.MODEL.FASHIONNET.EXPORT_ONNX:
+            model.set_swish(memory_efficient=False)
         # Have to delete unused parameters for distributed training...
         # i.e. classifier after the head block
         del model._avg_pooling
