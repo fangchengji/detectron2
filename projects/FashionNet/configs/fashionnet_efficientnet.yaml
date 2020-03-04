@@ -1,6 +1,6 @@
 MODEL:
   META_ARCHITECTURE: "FashionNet"
-  # WEIGHTS:
+  WEIGHTS: "output/efficientnet/b0/model_final.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   BACKBONE:
