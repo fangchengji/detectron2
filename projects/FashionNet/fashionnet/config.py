@@ -51,3 +51,10 @@ def add_fashionnet_config(cfg):
     _C.MODEL.DENSEBOX.OUT_CHANNELS = 128
     _C.MODEL.DENSEBOX.OUT_FEATURES = ['res4d']
 
+    # ---------------------------------------------------------------------------- #
+    # EfficientNet
+    # ---------------------------------------------------------------------------- #
+    _C.MODEL.EFFICIENTNET = CN()
+    # From 0 to 7
+    _C.MODEL.EFFICIENTNET.MODEL_SIZE = 0
+    _C.MODEL.EFFICIENTNET.OUT_FEATURES = ['head']
