@@ -10,6 +10,9 @@ def add_fashionnet_config(cfg):
     """
     _C = cfg
 
+    # onnx export model input size, w, h
+    _C.INPUT.SIZE = (800, 800)
+
     # Add sampler meta module
     _C.DATALOADER.SAMPLER_META = "fashionnet.samplers"
 

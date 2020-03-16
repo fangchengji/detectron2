@@ -61,6 +61,23 @@ _PREDEFINED_FASHION = {
         "deepfashion2/train/crop_5k",
         "deepfashion2/train/crop_5k.json",
     ),
+    # ignore classification branch
+    "fashion_ignore_test": (
+        "deepfashion2/train/image",
+        "deepfashion2/train/ignore_test.json",
+    ),
+    "fashion_classification_ignore_10w": (
+        "deepfashion2/train/image",
+        "deepfashion2/train/classification_ignore_10w.json",
+    ),
+    "fashion_classification_ignore_15w": (
+        "deepfashion2/train/image",
+        "deepfashion2/train/classification_ignore_15w.json",
+    ),
+    "fashion_classification_ignore_19w": (
+        "deepfashion2/train/image",
+        "deepfashion2/train/classification_ignore_19w.json",
+    ),
 
     # validation datasets
     "fashion_validation_14k": (
@@ -355,7 +372,7 @@ Category ids in annotations are not in [1, #categories]! We'll apply a mapping f
     dataset_dicts = []
 
     ann_keys = ["iscrowd", "bbox", "keypoints", "category_id"] + \
-               ["category2_id", "part", "toward"] + (extra_annotation_keys or [])
+               ["category2_id", "part", "toward", "ignore"] + (extra_annotation_keys or [])
 
     num_instances_without_valid_segmentation = 0
 

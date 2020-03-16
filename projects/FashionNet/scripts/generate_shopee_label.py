@@ -4,8 +4,8 @@ import json
 from PIL import Image
 import itertools
 
-root_dir = '/Users/fangcheng.ji/Documents/datasets/shopee_fashion/train_result'
-anno_file = os.path.join(root_dir, 'shopee_train_6k.json')
+root_dir = '/Users/fangcheng.ji/Documents/datasets/shopee_fashion/new_test_result'
+anno_file = os.path.join(root_dir, 'shopee_new_test.json')
 
 
 classes = ['commodity', 'model', 'detail', 'specification', 'unknown']

@@ -49,6 +49,11 @@ def annotations2_to_classification(annos, image_size):
     toward = torch.tensor(toward, dtype=torch.int64)
     target.gt_toward = toward
 
+    # if don't contains ignore, let it to 0
+    ignore = [anno["ignore"] if "ignore" in anno.keys() else 0 for anno in annos]
+    ignore = torch.tensor(ignore, dtype=torch.int64)
+    target.gt_ignore = ignore
+
     return target
 
 

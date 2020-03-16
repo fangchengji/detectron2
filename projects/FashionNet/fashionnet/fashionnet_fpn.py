@@ -23,7 +23,7 @@ from detectron2.modeling.meta_arch.build import META_ARCH_REGISTRY
 
 from detectron2.modeling.meta_arch.retinanet import RetinaNetHead
 
-__all__ = ["FashionNet"]
+__all__ = ["FashionNetFPN"]
 
 
 def permute_to_N_HWA_K(tensor, K):
@@ -60,7 +60,7 @@ def permute_all_cls_and_box_to_N_HWA_K_and_concat(box_cls, box_delta, num_classe
 
 
 @META_ARCH_REGISTRY.register()
-class FashionNet(nn.Module):
+class FashionNetFPN(nn.Module):
     """
     Implement FashionNet
     """
@@ -103,7 +103,8 @@ class FashionNet(nn.Module):
         backbone_shape = self.backbone.output_shape()
         feature_shapes = [backbone_shape[f] for f in self.in_features]
 
-        self.head = CombinedHead(cfg, feature_shapes)
+        self.head = RetinaNetHead(cfg, feature_shapes)
+        self.cls_head = FashionClassificationHead(cfg, feature_shapes)
 
         self.anchor_generator = build_anchor_generator(cfg, feature_shapes)
 
@@ -210,7 +211,10 @@ class FashionNet(nn.Module):
 
         features = self.backbone(net_input)
         features = [features[f] for f in self.in_features]
-        detection_logits, detection_bbox_reg, classification_logits = self.head(features)
+
+        detection_logits, detection_bbox_reg = self.head(features)
+        # classification head
+        classification_logits = self.cls_head(features)
 
         if self.export_onnx:
             # skip the postprocess and return tuple of tensor(onnx needed!)
@@ -667,7 +671,9 @@ class FashionClassificationHead(nn.Module):
     def __init__(self, cfg, input_shape: List[ShapeSpec]):
         super().__init__()
         # fmt: off
-        in_channels = input_shape[0].channels
+        in_channels = 0
+        for shape in input_shape:
+            in_channels += shape.channels
         num_classes = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CLASSES
         num_convs = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.NUM_CONVS
         prior_prob = cfg.MODEL.FASHIONNET.CLASSIFICATION_HEAD.PRIOR_PROB
@@ -702,46 +708,14 @@ class FashionClassificationHead(nn.Module):
                 at each spatial position for each of the A anchors and K object
                 classes.
         """
-        logits = []
+        xs = []
         for feature in features:
             x = self.avgpool(feature)
             x = torch.flatten(x, 1)
-            x = self.linear(x)
-            logits.append(x)
+            xs.append(x)
 
-        return logits[0], None
+        ff = torch.cat(xs, dim=1)
+        logits = self.linear(ff)
 
+        return logits
 
-class CombinedHead(nn.Module):
-    def __init__(self, cfg, input_shape: List[ShapeSpec]):
-        super().__init__()
-        input_channels = input_shape[0].channels
-        self.detection_bridge = nn.Conv2d(input_channels, 256, kernel_size=1, stride=1, padding=0)
-        self.detection_out = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-
-        self.classification_bridge = nn.Conv2d(input_channels, 256, kernel_size=1, stride=1, padding=0)
-        self.classification_out = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.xavier_normal_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-
-        from detectron2.layers import ShapeSpec
-        head_input_shape = [ShapeSpec(channels=256, stride=input_shape[0].stride)]
-
-        self.detection = RetinaNetHead(cfg, head_input_shape)
-        self.classification = FashionClassificationHead(cfg, head_input_shape)
-
-    def forward(self, features):
-        class_features = []
-        object_features = []
-        for feature in features:
-            class_features.append(self.classification_out(self.classification_bridge(feature)))
-            object_features.append(self.detection_out(self.detection_bridge(feature)))
-
-        detection_logits, detection_bbox_reg = self.detection.forward(object_features)
-        classification_logits, classification_bbox_reg = self.classification.forward(class_features)
-
-        return detection_logits, detection_bbox_reg, classification_logits

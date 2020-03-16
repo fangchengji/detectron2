@@ -77,7 +77,7 @@ if __name__ == "__main__":
     cfg = setup_cfg(args)
     input_names = ["input"]
     output_names = ["detection_logits", "detection_bbox_reg", "classification_logits"]
-    output_path = os.path.join(args.output, "fashionnet.onnx")
+    output_path = os.path.join(args.output, "fashionnet_fpn_ft_800.onnx")
 
     # create a torch model
     torch_model = build_model(cfg)
@@ -85,17 +85,22 @@ if __name__ == "__main__":
     torch_model.eval()
 
     # get a sample data
-    data_loader = build_detection_test_loader(cfg, cfg.DATASETS.TEST[0])
-    first_batch = next(iter(data_loader))
-    dummy_in = preprocess_image(
-        cfg, first_batch, torch_model.device, torch_model.size_divisibility
-    ).tensor
+    # data_loader = build_detection_test_loader(cfg, cfg.DATASETS.TEST[0])
+    # first_batch = next(iter(data_loader))
+    # dummy_in = preprocess_image(
+    #     cfg, first_batch, torch_model.device, torch_model.size_divisibility
+    # ).tensor
+    # set input size to 800 * 800
+    # dummy_in = dummy_in[:, :, :800, :800]
+
+    input_size = cfg.INPUT.SIZE
+    dummy_in = torch.randn(1, 3, input_size[1], input_size[0], device=torch_model.device)
 
     torch.onnx.export(
         torch_model,
         dummy_in,
         output_path,
-        verbose=True,
+        verbose=False,
         input_names=input_names,
         output_names=output_names)
 
