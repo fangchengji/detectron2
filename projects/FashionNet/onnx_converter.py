@@ -1,6 +1,7 @@
 import argparse
 import os
 import torch
+import itertools
 
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
@@ -36,6 +37,7 @@ def setup_cfg(args):
     # cuda context is initialized before creating dataloader, so we don't fork anymore
     cfg.DATALOADER.NUM_WORKERS = 0
     # set export_onnx flag to true
+    cfg.MODEL.EXPORT_ONNX = True
     cfg.MODEL.FASHIONNET.EXPORT_ONNX = True
     cfg = add_export_config(cfg)
     cfg.merge_from_file(args.config_file)
@@ -76,8 +78,10 @@ if __name__ == "__main__":
 
     cfg = setup_cfg(args)
     input_names = ["input"]
-    output_names = ["detection_logits", "detection_bbox_reg", "classification_logits"]
-    output_path = os.path.join(args.output, "fashionnet_fpn_ft_800.onnx")
+    # output_names = ["detection_logits", "detection_bbox_reg", "classification_logits"]
+    output_names = [[f"logits_{i}", f"bbox_reg_{i}", f"ctrness_{i}"] for i in range(3, 8)]
+    output_names = list(itertools.chain(*output_names))
+    output_path = os.path.join(args.output, "fashionnet_fcos_v39_800.onnx")
 
     # create a torch model
     torch_model = build_model(cfg)

@@ -6,3 +6,4 @@ from .fpn import FPN
 from .resnet import ResNet, ResNetBlockBase, build_resnet_backbone, make_stage
 
 # TODO can expose more resnet blocks after careful consideration
+from .vovnet import build_fcos_vovnet_fpn_backbone

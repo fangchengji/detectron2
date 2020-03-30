@@ -217,6 +217,9 @@ class ProposalNetwork(nn.Module):
         self.normalizer = lambda x: (x - pixel_mean) / pixel_std
         self.to(self.device)
 
+        # for onnx export
+        self.export_onnx = cfg.MODEL.EXPORT_ONNX
+
     def forward(self, batched_inputs):
         """
         Args:
@@ -228,6 +231,11 @@ class ProposalNetwork(nn.Module):
                 The dict contains one key "proposals" whose value is a
                 :class:`Instances` with keys "proposal_boxes" and "objectness_logits".
         """
+        if self.export_onnx:
+            features = self.backbone(batched_inputs)
+            proposals = self.proposal_generator(None, features, None)
+            return proposals
+
         images = [x["image"].to(self.device) for x in batched_inputs]
         images = [self.normalizer(x) for x in images]
         images = ImageList.from_tensors(images, self.backbone.size_divisibility)
