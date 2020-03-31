@@ -1,0 +1,61 @@
+MODEL:
+  META_ARCHITECTURE: "OneStageDetector"
+  WEIGHTS: "https://www.dropbox.com/s/yduxbc13s3ip6qn/mobilenet_v2_detectron2.pth?dl=1"
+  #WEIGHTS: "./output/fashionnet_fpn_ft/model_final.pth"
+  BACKBONE:
+    NAME: "build_fcos_mobilenetv2_fpn_backbone"
+  MOBILENET:
+    OUT_FEATURES: ["res3", "res4", "res5"]
+  FPN:
+    IN_FEATURES: ["res3", "res4", "res5"]
+  PROPOSAL_GENERATOR:
+    NAME: "FCOS"
+  FCOS:
+    NUM_CLASSES: 13
+    INFERENCE_TH_TRAIN: 0.05
+    INFERENCE_TH_TEST: 0.05
+    NMS_TH: 0.6
+    PRE_NMS_TOPK_TRAIN: 1000
+    PRE_NMS_TOPK_TEST: 300
+  FASHIONNET:
+    CLASSIFICATION_HEAD:
+      ACTIVATION: 'softmax'
+      SCORE_THRESH: 0.5
+DATASETS:
+  TRAIN: >
+   ("fashion_train_5w",
+    "fashion_train_user_commodity_5w",
+    "fashion_train_commodity_10w",
+    "fashion_classification_ignore_10w",
+    "fashion_classification_ignore_15w",
+    "fashion_classification_ignore_19w",)
+#    "fashion_train_crop_5k",
+#    "shopee_fashion_train_6k",
+#    "shopee_fashion_train_3k",)
+
+#  TRAIN: ("shopee_fashion_train_6k", "shopee_fashion_train_3k",)
+#  TRAIN: ("fashion_classification_ignore_19w",)
+#  TEST: ("fashion_validation_merged_v1", "shopee_fashion_new_test",)
+#  TEST: ("shopee_fashion_new_test",)
+  TEST: ("fashion_validation_merged_v1",)
+DATALOADER:
+#  SAMPLER_META: "fashionnet.samplers"
+  SAMPLER_META: "default"
+  FILTER_EMPTY_ANNOTATIONS: True
+  SAMPLER_TRAIN: "RepeatFactorTrainingSampler"
+  REPEAT_THRESHOLD: 0.077
+  NUM_WORKERS: 4
+SOLVER:
+  IMS_PER_BATCH: 16
+  BASE_LR: 0.01
+  STEPS: (300000, 340000)
+  MAX_ITER: 360000
+INPUT:
+  MIN_SIZE_TRAIN: (640, 672, 704, 736, 768, 800)
+TEST:
+  EVAL_PERIOD: 10000
+  # export and visualize the error data.
+  VIEW_ERROR: False
+OUTPUT_DIR: "./output/fcos_mv2"
+VERSION: 2
+

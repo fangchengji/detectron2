@@ -154,7 +154,7 @@ def build_mnv2_backbone(cfg, input_shape):
     Returns:
         MobileNetV2: a :class:`MobileNetV2` instance.
     """
-    out_features = cfg.MODEL.RESNETS.OUT_FEATURES
+    out_features = cfg.MODEL.MOBILENET.OUT_FEATURES
 
     out_feature_channels = {"res2": 24, "res3": 32,
                             "res4": 96, "res5": 320}
