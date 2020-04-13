@@ -128,8 +128,6 @@ class Caffe2Model(nn.Module):
             f.write(str(self._predict_net))
         with open(os.path.join(output_dir, "model_init.pb"), "wb") as f:
             f.write(self._init_net.SerializeToString())
-        with open(os.path.join(output_dir, "model_init.pbtxt"), "w") as f:
-            f.write(str(self._init_net))
 
     def save_graph(self, output_file, inputs=None):
         """
@@ -148,7 +146,7 @@ class Caffe2Model(nn.Module):
             size_divisibility = get_pb_arg_vali(self._predict_net, "size_divisibility", 0)
             device = get_pb_arg_vals(self._predict_net, "device", b"cpu").decode("ascii")
             inputs = convert_batched_inputs_to_c2_format(inputs, size_divisibility, device)
-            inputs = [x.numpy() for x in inputs]
+            inputs = [x.cpu().numpy() for x in inputs]
             run_and_save_graph(self._predict_net, self._init_net, inputs, output_file)
 
     @staticmethod
