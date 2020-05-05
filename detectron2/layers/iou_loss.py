@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import math
 
 
 class IOULoss(nn.Module):
@@ -45,6 +46,27 @@ class IOULoss(nn.Module):
             losses = 1 - ious
         elif self.loc_loss_type == 'giou':
             losses = 1 - gious
+        elif self.loc_loss_type == 'diou':
+            rou_square = 0.25 * (torch.pow(target_right - pred_right + pred_left - target_left, 2) + \
+                                 torch.pow(target_bottom - pred_bottom + pred_top - target_top, 2))
+            c_square = torch.pow(g_w_intersect, 2) + torch.pow(g_h_intersect, 2)
+            diou = ious - rou_square/(c_square + 0.00001)
+            losses = 1 - diou
+        elif self.loc_loss_type == 'ciou':
+            rou_square = 0.25 * (torch.pow(target_right - pred_right + pred_left - target_left, 2) + \
+                                 torch.pow(target_bottom - pred_bottom + pred_top - target_top, 2))
+            c_square = torch.pow(g_w_intersect, 2) + torch.pow(g_h_intersect, 2)
+            diou_loss = 1.0 - ious + rou_square / (c_square + 0.00001)
+            # ciou
+            w_gt = target_left + target_right
+            h_gt = target_top + target_bottom + 0.00001
+            w_pred = pred_left + pred_right
+            h_pred = pred_top + pred_bottom + 0.00001
+            v = (4 / (math.pi ** 2)) * torch.pow((torch.atan(w_gt / h_gt) - torch.atan(w_pred / h_pred)), 2)
+            with torch.no_grad():
+                s = 1.0 - ious
+                alpha = v / (s + v + 0.00001)
+            losses = diou_loss + alpha * v
         else:
             raise NotImplementedError
 
