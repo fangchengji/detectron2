@@ -72,6 +72,7 @@ __global__ void nms_rotated_cuda_kernel(
 namespace detectron2 {
 
 at::Tensor nms_rotated_cuda(
+    // input must be contiguous
     const at::Tensor& dets,
     const at::Tensor& scores,
     float iou_threshold) {
@@ -83,9 +84,10 @@ at::Tensor nms_rotated_cuda(
   auto order_t = std::get<1>(scores.sort(0, /* descending=*/true));
   auto dets_sorted = dets.index_select(0, order_t);
 
-  int dets_num = dets.size(0);
+  auto dets_num = dets.size(0);
 
-  const int col_blocks = at::cuda::ATenCeilDiv(dets_num, threadsPerBlock);
+  const int col_blocks =
+      at::cuda::ATenCeilDiv(static_cast<int>(dets_num), threadsPerBlock);
 
   at::Tensor mask =
       at::empty({dets_num * col_blocks}, dets.options().dtype(at::kLong));
@@ -94,7 +96,7 @@ at::Tensor nms_rotated_cuda(
   dim3 threads(threadsPerBlock);
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
-  AT_DISPATCH_FLOATING_TYPES_AND_HALF(
+  AT_DISPATCH_FLOATING_TYPES(
       dets_sorted.type(), "nms_rotated_kernel_cuda", [&] {
         nms_rotated_cuda_kernel<scalar_t><<<blocks, threads, 0, stream>>>(
             dets_num,
