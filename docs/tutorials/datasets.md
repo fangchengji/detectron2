@@ -1,5 +1,6 @@
 # Use Custom Datasets
 
+Datasets that have builtin support in detectron2 are listed in [datasets](../../datasets).
 If you want to use a custom dataset while also reusing detectron2's data loaders,
 you will need to
 
@@ -45,15 +46,12 @@ we load the original dataset into `list[dict]` with a specification similar to C
 This is our standard representation for a dataset.
 
 Each dict contains information about one image.
-The dict may have the following fields.
-The fields are often optional, and some functions may be able to
-infer certain fields from others if needed, e.g., the data loader
-will load the image from "file_name" and load "sem_seg" from "sem_seg_file_name".
+The dict may have the following fields,
+and the required fields vary based on what the dataloader needs,
+which are often different between among different tasks.
 
 + `file_name`: the full path to the image file. Will apply rotation and flipping if the image has such exif information.
 + `sem_seg_file_name`: the full path to the ground truth semantic segmentation file.
-+ `sem_seg`: semantic segmentation ground truth in a 2D `torch.Tensor`. Values in the array represent
-   category labels starting from 0.
 + `height`, `width`: integer. The shape of image.
 + `image_id` (str or int): a unique id that identifies this image. Used
 	during evaluation to identify the images, but a dataset may use it for different purposes.
@@ -114,7 +112,7 @@ the [load_coco_json](../modules/data.html#detectron2.data.datasets.load_coco_jso
 In the `list[dict]` that your dataset function returns, the dictionary can also have arbitrary custom data.
 This can be useful when you're doing a new task that needs extra information not supported
 by the standard dataset dicts. In this case, you need to make sure the downstream code can handle your data
-correctly. Usually this requires writing a new `mapper` for the dataloader (see [Use Custom Dataloaders](data_loading.html))
+correctly. Usually this requires writing a new `mapper` for the dataloader (see [Use Custom Dataloaders](./data_loading.md))
 
 When designing your custom format, note that all dicts are stored in memory
 (sometimes serialized and with multiple copies).
@@ -212,3 +210,8 @@ There are other configs you might want to change to train or evaluate on new dat
 * If you're training Fast R-CNN (with precomputed proposals), `DATASETS.PROPOSAL_FILES_{TRAIN,TEST}`
 	need to match the datasets. The format of proposal files are documented
 	[here](../modules/data.html#detectron2.data.load_proposals_into_dataset).
+
+New models
+(e.g. [TensorMask](../../projects/TensorMask),
+[PointRend](../../projects/PointRend))
+often have their own configs that need to be changed as well.

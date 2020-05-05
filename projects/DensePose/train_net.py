@@ -16,19 +16,19 @@ from collections import OrderedDict
 import detectron2.utils.comm as comm
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import CfgNode, get_cfg
-from detectron2.data import build_detection_test_loader, build_detection_train_loader
 from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, hooks, launch
 from detectron2.evaluation import COCOEvaluator, DatasetEvaluators, verify_results
 from detectron2.modeling import DatasetMapperTTA
 from detectron2.utils.logger import setup_logger
 
 from densepose import (
-    DatasetMapper,
     DensePoseCOCOEvaluator,
     DensePoseGeneralizedRCNNWithTTA,
+    add_dataset_category_config,
     add_densepose_config,
     load_from_cfg,
 )
+from densepose.data import DatasetMapper, build_detection_test_loader, build_detection_train_loader
 
 
 class Trainer(DefaultTrainer):
@@ -70,6 +70,7 @@ class Trainer(DefaultTrainer):
 
 def setup(args):
     cfg = get_cfg()
+    add_dataset_category_config(cfg)
     add_densepose_config(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
