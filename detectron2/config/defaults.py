@@ -524,6 +524,16 @@ _C.MODEL.FCOS.NUM_SHARE_CONVS = 0
 _C.MODEL.FCOS.CENTER_SAMPLE = True
 _C.MODEL.FCOS.POS_RADIUS = 1.5
 _C.MODEL.FCOS.LOC_LOSS_TYPE = 'giou'
+_C.MODEL.FCOS.NMS_TYPE = 'nms'
+
+
+# ---------------------------------------------------------------------------- #
+# EfficientNet backbone
+# ---------------------------------------------------------------------------- #
+_C.MODEL.EFFICIENTNET = CN()
+# From 0 to 7
+_C.MODEL.EFFICIENTNET.MODEL_SIZE = 0
+_C.MODEL.EFFICIENTNET.OUT_FEATURES = ['head']
 
 
 # ---------------------------------------------------------------------------- #

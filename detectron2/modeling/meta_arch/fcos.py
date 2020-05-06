@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from detectron2.layers import ShapeSpec, cat, ml_nms
+from detectron2.layers import ShapeSpec, cat, ml_nms, diou_nms
 from detectron2.modeling.proposal_generator.build import PROPOSAL_GENERATOR_REGISTRY
 
 from detectron2.layers import DFConv2d, IOULoss
@@ -50,6 +50,7 @@ class FCOS(nn.Module):
         self.mask_on              = cfg.MODEL.MASK_ON #ywlee
         # fmt: on
         self.iou_loss = IOULoss(cfg.MODEL.FCOS.LOC_LOSS_TYPE)
+        self.nms_type = cfg.MODEL.FCOS.NMS_TYPE
         # generate sizes of interest
         soi = []
         prev_size = -1
@@ -112,6 +113,7 @@ class FCOS(nn.Module):
             post_nms_topk,
             self.thresh_with_ctr,
             gt_instances,
+            nms_type=self.nms_type,
         )
 
         if self.training:
@@ -362,6 +364,7 @@ class FCOSOutputs(object):
             fpn_post_nms_top_n,
             thresh_with_ctr,
             gt_instances=None,
+            nms_type='nms',
     ):
         self.logits_pred = logits_pred
         self.reg_pred = reg_pred
@@ -385,6 +388,7 @@ class FCOSOutputs(object):
         self.nms_thresh = nms_thresh
         self.fpn_post_nms_top_n = fpn_post_nms_top_n
         self.thresh_with_ctr = thresh_with_ctr
+        self.nms_type = nms_type
 
     def _transpose(self, training_targets, num_loc_list):
         '''
@@ -671,7 +675,12 @@ class FCOSOutputs(object):
         results = []
         for i in range(num_images):
             # multiclass nms
-            result = ml_nms(boxlists[i], self.nms_thresh)
+            if self.nms_type == 'nms' or self.nms_type == 'default':
+                result = ml_nms(boxlists[i], self.nms_thresh)
+            elif self.nms_type == 'diou_nms':
+                result = diou_nms(boxlists[i], self.nms_thresh, beta1=0.9)
+            else:
+                raise Exception("Not implement nms type!!")
             number_of_detections = len(result)
 
             # Limit to max_per_image detections **over all classes**
