@@ -168,3 +168,64 @@ def ml_nms(boxlist, nms_thresh, max_proposals=-1,
         keep = keep[: max_proposals]
     boxlist = boxlist[keep]
     return boxlist
+
+
+def diou_nms(boxlist, nms_thresh, max_proposals=-1, beta1=1.0):
+    """Apply DIoU-NMS."""
+    # TODO: reimplement in cuda to accelerate the speed
+    if len(boxlist) == 0:
+        return boxlist
+    if nms_thresh <= 0:
+        return boxlist
+    boxes = boxlist.pred_boxes.tensor
+    scores = boxlist.scores
+    labels = boxlist.pred_classes
+
+    result_mask = scores.new_zeros(scores.size(), dtype=torch.bool)
+    area = (boxes[:, 2] - boxes[:, 0] + 1) * (boxes[:, 3] - boxes[:, 1] + 1)
+    center_x = (boxes[:, 2] + boxes[:, 0]) / 2
+    center_y = (boxes[:, 3] + boxes[:, 1]) / 2
+    for id in torch.unique(labels).cpu().tolist():
+        mask = (labels == id).nonzero().view(-1)
+        # do diounms for one class
+        boxes_i = boxes[mask]
+        area_i = area[mask]
+        center_x_i = center_x[mask]
+        center_y_i = center_y[mask]
+        scores_i = scores[mask]
+        order_i = torch.argsort(scores_i, descending=True)
+
+        keep_i = torch.ones_like(scores_i, dtype=torch.long)
+        for j, k in enumerate(order_i):
+            if keep_i[k] == 0:
+                continue
+            res_mask = order_i[j+1:]
+            d = torch.pow(center_x_i[k] - center_x_i[res_mask], 2) + torch.pow(center_y_i[k] - center_y_i[res_mask], 2)
+            cx1 = torch.min(boxes_i[k, 0], boxes_i[res_mask, 0])
+            cy1 = torch.min(boxes_i[k, 1], boxes_i[res_mask, 1])
+            cx2 = torch.max(boxes_i[k, 2], boxes_i[res_mask, 2])
+            cy2 = torch.max(boxes_i[k, 3], boxes_i[res_mask, 3])
+            cw = cx2 - cx1
+            ch = cy2 - cy1
+            c = cw * cw + ch * ch
+            ix1 = torch.max(boxes_i[k, 0], boxes_i[res_mask, 0])
+            iy1 = torch.max(boxes_i[k, 1], boxes_i[res_mask, 1])
+            ix2 = torch.min(boxes_i[k, 2], boxes_i[res_mask, 2])
+            iy2 = torch.min(boxes_i[k, 3], boxes_i[res_mask, 3])
+            w = torch.clamp(ix2 - ix1 + 1, min=0.0)
+            h = torch.clamp(iy2 - iy1 + 1, min=0.0)
+            inter = w * h
+            ovr = inter / (area_i[k] + area_i[res_mask] - inter) - (d / c) ** beta1
+
+            supressed = res_mask[ovr >= nms_thresh]
+            keep_i[supressed] = 0
+
+        #keep = nms(boxes[mask], scores[mask], nms_threshold)
+        result_mask[mask[keep_i.nonzero().view(-1)]] = True
+
+    keep = result_mask.nonzero().view(-1)
+    keep = keep[scores[keep].argsort(descending=True)]
+    if max_proposals > 0:
+        keep = keep[: max_proposals]
+    boxlist = boxlist[keep]
+    return boxlist
