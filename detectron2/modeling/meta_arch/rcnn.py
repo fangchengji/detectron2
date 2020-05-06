@@ -213,12 +213,12 @@ class ProposalNetwork(nn.Module):
         self.register_buffer("pixel_mean", torch.Tensor(cfg.MODEL.PIXEL_MEAN).view(-1, 1, 1))
         self.register_buffer("pixel_std", torch.Tensor(cfg.MODEL.PIXEL_STD).view(-1, 1, 1))
 
+        # for onnx export
+        self.export_onnx = cfg.MODEL.EXPORT_ONNX
+
     @property
     def device(self):
         return self.pixel_mean.device
-
-        # for onnx export
-        self.export_onnx = cfg.MODEL.EXPORT_ONNX
 
     def forward(self, batched_inputs):
         """
