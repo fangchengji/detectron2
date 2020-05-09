@@ -532,8 +532,10 @@ _C.MODEL.FCOS.NMS_TYPE = 'nms'
 # ---------------------------------------------------------------------------- #
 _C.MODEL.EFFICIENTNET = CN()
 # From 0 to 7
-_C.MODEL.EFFICIENTNET.MODEL_SIZE = 0
-_C.MODEL.EFFICIENTNET.OUT_FEATURES = ['head']
+_C.MODEL.EFFICIENTNET.COMPOUND_COEFFICIENT = 0
+
+_C.MODEL.EFFICIENTNET.OUT_FEATURES = ['p3', 'p4', 'p5']
+_C.MODEL.EFFICIENTNET.NORM = 'SyncBN'
 
 
 # ---------------------------------------------------------------------------- #

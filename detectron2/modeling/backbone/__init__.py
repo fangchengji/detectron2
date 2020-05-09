@@ -10,3 +10,5 @@ from .vovnet import build_fcos_vovnet_fpn_backbone, build_vovnet_backbone, \
     build_vovnet_fpn_backbone
 from .mobilenet import build_fcos_mobilenetv2_fpn_backbone, build_mnv2_backbone,\
     build_mobilenetv2_fpn_backbone
+from .efficientnet import build_efficientnet_backbone
+
