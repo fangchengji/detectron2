@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from detectron2.layers import ShapeSpec, cat, ml_nms, diou_nms
 from detectron2.modeling.proposal_generator.build import PROPOSAL_GENERATOR_REGISTRY
 
-from detectron2.layers import DFConv2d, IOULoss
+from detectron2.layers import DFConv2d, IOULoss, get_norm
 from detectron2.structures import Instances, Boxes
 from detectron2.utils.comm import get_world_size, reduce_sum
 from fvcore.nn import sigmoid_focal_loss_jit
@@ -191,6 +191,9 @@ class FCOSHead(nn.Module):
                 ))
                 if norm == "GN":
                     tower.append(nn.GroupNorm(32, in_channels))
+                elif norm is not None:
+                    tower.append(get_norm(norm, in_channels))
+
                 tower.append(nn.ReLU())
             self.add_module('{}_tower'.format(head),
                             nn.Sequential(*tower))

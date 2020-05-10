@@ -653,6 +653,11 @@ class Conv2dStaticSamePadding(nn.Module):
         elif len(self.kernel_size) == 1:
             self.kernel_size = [self.kernel_size[0]] * 2
 
+        # init weight
+        nn.init.xavier_normal_(self.conv.weight)
+        if self.conv.bias is not None:  # pyre-ignore
+            nn.init.constant_(self.conv.bias, 0)
+
     def forward(self, x):
         h, w = x.shape[-2:]
 

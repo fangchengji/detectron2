@@ -539,6 +539,25 @@ _C.MODEL.EFFICIENTNET.NORM = 'SyncBN'
 
 
 # ---------------------------------------------------------------------------- #
+# BiFPN options
+# ---------------------------------------------------------------------------- #
+_C.MODEL.BIFPN = CN()
+# Names of the input feature maps to be used by BiFPN
+# They must have contiguous power of 2 strides
+# e.g., ["p3", "p4", "p5"]
+_C.MODEL.BIFPN.IN_FEATURES = []
+# Out channels for bifpn
+# -1 use the EfficientDet default value according to compound coefficient
+_C.MODEL.BIFPN.OUT_CHANNELS = -1
+
+# Options: "" (no norm), "GN"
+_C.MODEL.BIFPN.NORM = "SyncBN"
+
+# Types for fusing the FPN top-down and lateral features. Can be either "sum" or "avg"
+_C.MODEL.BIFPN.FUSE_TYPE = "sum"
+
+
+# ---------------------------------------------------------------------------- #
 # VoVNet backbone
 # ---------------------------------------------------------------------------- #
 

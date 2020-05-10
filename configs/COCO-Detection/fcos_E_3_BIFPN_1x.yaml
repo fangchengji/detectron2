@@ -1,0 +1,44 @@
+MODEL:
+  META_ARCHITECTURE: "OneStageDetector"
+#  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+#  WEIGHTS: "output/fcos_r50/model_final.pth"
+  MASK_ON: False
+  KEYPOINT_ON: False
+  BACKBONE:
+    NAME: "build_efficientnet_bifpn_backbone"
+  EFFICIENTNET:
+    COMPOUND_COEFFICIENT: 3
+    OUT_FEATURES: ['p3', 'p4', 'p5']
+    # can't use GN, because of the channel can not be divided by 32
+    NORM: "SyncBN"
+  BIFPN:
+    IN_FEATURES: ["p3", "p4", "p5"]
+    NORM: "SyncBN"
+  PROPOSAL_GENERATOR:
+    NAME: "FCOS"
+  FCOS:
+    NMS_TH: 0.6
+    PRE_NMS_TOPK_TRAIN: 1000
+    PRE_NMS_TOPK_TEST: 300
+    LOC_LOSS_TYPE: 'diou'
+    NMS_TYPE: 'nms'
+    # Use GN only when backbone channels can be divided by 32
+    NORM: "GN"
+DATASETS:
+  TRAIN: ("coco_2017_train",)
+  TEST: ("coco_2017_val",)
+SOLVER:
+  IMS_PER_BATCH: 4
+  BASE_LR: 0.01
+  WEIGHT_DECAY: 0.00004
+  STEPS: (120000, 160000)
+  MAX_ITER: 180000
+  CHECKPOINT_PERIOD: 10000
+INPUT:
+  MIN_SIZE_TRAIN: (640, 672, 704, 736, 768, 800)
+  MAX_SIZE_TRAIN: 1333
+TEST:
+  EVAL_PERIOD: 20000
+OUTPUT_DIR: "output/fcos_e3_bifpn"
+VERSION: 2
+
