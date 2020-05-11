@@ -20,6 +20,13 @@ and it originates from [maskrcnn-benchmark](https://github.com/facebookresearch/
 See our [blog post](https://ai.facebook.com/blog/-detectron2-a-pytorch-based-modular-object-detection-library-/)
 to see more demos and learn about detectron2.
 
+### What's Difference with FAIR
+* More Architecture: FCOS
+* More Backbone: VoVNet_v2, MobileNet_v2, EfficientNet, BIFPN_EfficientNet
+* More Loss: DIOU Loss, CIOU Loss 
+* More Layers: DIOU_NMS
+* ...
+
 ## Installation
 
 See [INSTALL.md](INSTALL.md).
