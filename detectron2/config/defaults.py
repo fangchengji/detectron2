@@ -149,6 +149,7 @@ _C.MODEL.FPN.NORM = ""
 # Types for fusing the FPN top-down and lateral features. Can be either "sum" or "avg"
 _C.MODEL.FPN.FUSE_TYPE = "sum"
 
+_C.MODEL.FPN.TOP_LEVELS = 2
 
 # ---------------------------------------------------------------------------- #
 # Proposal generator options
@@ -486,6 +487,46 @@ _C.MODEL.RESNETS.DEFORM_NUM_GROUPS = 1
 
 
 # ---------------------------------------------------------------------------- #
+# EfficientDet Head
+# ---------------------------------------------------------------------------- #
+_C.MODEL.EFFICIENTDET= CN()
+
+# This is the number of foreground classes.
+_C.MODEL.EFFICIENTDET.NUM_CLASSES = 80
+_C.MODEL.EFFICIENTDET.IN_FEATURES = ["p3", "p4", "p5", "p6", "p7"]
+
+# Convolutions to use in the cls and bbox tower
+# NOTE: this doesn't include the last conv for logits
+_C.MODEL.EFFICIENTDET.NUM_CONVS = 4
+
+# IoU overlap ratio [bg, fg] for labeling anchors.
+# Anchors with < bg are labeled negative (0)
+# Anchors  with >= bg and < fg are ignored (-1)
+# Anchors with >= fg are labeled positive (1)
+_C.MODEL.EFFICIENTDET.IOU_THRESHOLDS = [0.4, 0.5]
+_C.MODEL.EFFICIENTDET.IOU_LABELS = [0, -1, 1]
+
+# Prior prob for rare case (i.e. foreground) at the beginning of training.
+# This is used to set the bias for the logits layer of the classifier subnet.
+# This improves training stability in the case of heavy class imbalance.
+_C.MODEL.EFFICIENTDET.PRIOR_PROB = 0.01
+
+# Inference cls score threshold, only anchors with score > INFERENCE_TH are
+# considered for inference (to improve speed)
+_C.MODEL.EFFICIENTDET.SCORE_THRESH_TEST = 0.05
+_C.MODEL.EFFICIENTDET.TOPK_CANDIDATES_TEST = 1000
+_C.MODEL.EFFICIENTDET.NMS_THRESH_TEST = 0.5
+
+# Weights on (dx, dy, dw, dh) for normalizing Retinanet anchor regression targets
+_C.MODEL.EFFICIENTDET.BBOX_REG_WEIGHTS = (1.0, 1.0, 1.0, 1.0)
+
+# Loss parameters
+_C.MODEL.EFFICIENTDET.FOCAL_LOSS_GAMMA = 2.0
+_C.MODEL.EFFICIENTDET.FOCAL_LOSS_ALPHA = 0.25
+_C.MODEL.EFFICIENTDET.SMOOTH_L1_LOSS_BETA = 0.1
+
+
+# ---------------------------------------------------------------------------- #
 # FCOS Head
 # ---------------------------------------------------------------------------- #
 _C.MODEL.FCOS = CN()
@@ -517,6 +558,10 @@ _C.MODEL.FCOS.SIZES_OF_INTEREST = [64, 128, 256, 512]
 _C.MODEL.FCOS.USE_RELU = True
 _C.MODEL.FCOS.USE_DEFORMABLE = False
 
+# the type of fcos tower conv type, support conv or dw_conv
+_C.MODEL.FCOS.TOWER_CONV = 'conv'
+# the type of fcos tower activation type, support swish or relu
+_C.MODEL.FCOS.TOWER_ACTIVATION = 'relu'
 # the number of convolutions used in the cls and bbox tower
 _C.MODEL.FCOS.NUM_CLS_CONVS = 4
 _C.MODEL.FCOS.NUM_BOX_CONVS = 4
@@ -555,6 +600,7 @@ _C.MODEL.BIFPN.NORM = "SyncBN"
 
 # Types for fusing the FPN top-down and lateral features. Can be either "sum" or "avg"
 _C.MODEL.BIFPN.FUSE_TYPE = "sum"
+_C.MODEL.BIFPN.TOP_LEVELS = 2
 
 
 # ---------------------------------------------------------------------------- #
