@@ -5,23 +5,27 @@ MODEL:
   MASK_ON: False
   KEYPOINT_ON: False
   BACKBONE:
-    NAME: "build_efficientnet_fpn_backbone"
+    NAME: "build_efficientnet_bifpn_backbone"
   EFFICIENTNET:
     COMPOUND_COEFFICIENT: 3
     OUT_FEATURES: ['p3', 'p4', 'p5']
     # can't use GN, because of the channel can not be divided by 32
     NORM: "SyncBN"
-  FPN:
+  BIFPN:
     IN_FEATURES: ["p3", "p4", "p5"]
+    NORM: "SyncBN"
   PROPOSAL_GENERATOR:
-    NAME: "FCOS"
-  FCOS:
+    NAME: "EfficientDet"
+  EFFICIENTDET:
     NMS_TH: 0.6
     PRE_NMS_TOPK_TRAIN: 1000
     PRE_NMS_TOPK_TEST: 300
     LOC_LOSS_TYPE: 'diou'
     NMS_TYPE: 'nms'
+    # Use GN only when backbone channels can be divided by 32
     NORM: "GN"
+    TOWER_CONV: 'dw_conv'
+    TOWER_ACTIVATION: 'swish'
 DATASETS:
   TRAIN: ("coco_2017_train",)
   TEST: ("coco_2017_val",)
@@ -37,6 +41,6 @@ INPUT:
   MAX_SIZE_TRAIN: 1333
 TEST:
   EVAL_PERIOD: 20000
-OUTPUT_DIR: "output/fcos_e3_fpn"
+OUTPUT_DIR: "output/efficientdet_e3_bifpn_b8"
 VERSION: 2
 

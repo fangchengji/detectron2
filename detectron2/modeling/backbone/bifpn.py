@@ -9,18 +9,19 @@ from torch.nn import functional as F
 
 import math
 
+import fvcore.nn.weight_init as weight_init
 from detectron2.modeling.backbone import Backbone
 from detectron2.modeling.backbone.build import BACKBONE_REGISTRY
 from detectron2.layers import get_norm, ShapeSpec
 
-from .efficientnet import Conv2dStaticSamePadding, MemoryEfficientSwish, Swish, build_efficientnet_backbone
+from .efficientnet import MemoryEfficientSwish, Swish, build_efficientnet_backbone
+from .fpn import LastLevelMaxPool, LastLevelP6P7
 
 
 class SeparableConvBlock(nn.Module):
     """
     created by Zylo117
     """
-
     def __init__(self, in_channels, out_channels=None, norm="", activation=False, onnx_export=False):
         super(SeparableConvBlock, self).__init__()
         if out_channels is None:
@@ -30,10 +31,11 @@ class SeparableConvBlock(nn.Module):
         #  share bias between depthwise_conv and pointwise_conv
         #  or just pointwise_conv apply bias.
         # A: Confirmed, just pointwise_conv applies bias, depthwise_conv has no bias.
-
-        self.depthwise_conv = Conv2dStaticSamePadding(in_channels, in_channels,
-                                                      kernel_size=3, stride=1, groups=in_channels, bias=False)
-        self.pointwise_conv = Conv2dStaticSamePadding(in_channels, out_channels, kernel_size=1, stride=1)
+        use_bias = norm == ""
+        self.depthwise_conv = nn.Conv2d(
+            in_channels, in_channels, kernel_size=3, stride=1, padding=1, groups=in_channels, bias=False
+        )
+        self.pointwise_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, bias=use_bias)
 
         self.norm = norm
         if self.norm is not "":
@@ -59,12 +61,8 @@ class SeparableConvBlock(nn.Module):
 
 
 class BiFPNBlock(nn.Module):
-    """
-    modified by Zylo117
-    """
-
     def __init__(
-        self, out_channels, in_channels, first_time=False, norm="BN", epsilon=1e-4, onnx_export=False, attention=True
+        self, in_features, out_channels, norm="BN", epsilon=1e-4, onnx_export=False, attention=True
     ):
         """
         Args:
@@ -78,90 +76,43 @@ class BiFPNBlock(nn.Module):
         super(BiFPNBlock, self).__init__()
 
         self.epsilon = epsilon
-        self.norm = get_norm(norm, out_channels)
-
-        # Conv layers
-        self.conv6_up = SeparableConvBlock(out_channels, norm=norm, onnx_export=onnx_export)
-        self.conv5_up = SeparableConvBlock(out_channels, norm=norm, onnx_export=onnx_export)
-        self.conv4_up = SeparableConvBlock(out_channels, norm=norm, onnx_export=onnx_export)
-        self.conv3_up = SeparableConvBlock(out_channels, norm=norm, onnx_export=onnx_export)
-        self.conv4_down = SeparableConvBlock(out_channels, norm=norm, onnx_export=onnx_export)
-        self.conv5_down = SeparableConvBlock(out_channels, norm=norm, onnx_export=onnx_export)
-        self.conv6_down = SeparableConvBlock(out_channels, norm=norm, onnx_export=onnx_export)
-        self.conv7_down = SeparableConvBlock(out_channels, norm=norm, onnx_export=onnx_export)
-
-        # Feature scaling layers
-        self.p6_upsample = nn.Upsample(scale_factor=2, mode='nearest')
-        self.p5_upsample = nn.Upsample(scale_factor=2, mode='nearest')
-        self.p4_upsample = nn.Upsample(scale_factor=2, mode='nearest')
-        self.p3_upsample = nn.Upsample(scale_factor=2, mode='nearest')
-
-        self.p4_downsample = MaxPool2dStaticSamePadding(3, 2)
-        self.p5_downsample = MaxPool2dStaticSamePadding(3, 2)
-        self.p6_downsample = MaxPool2dStaticSamePadding(3, 2)
-        self.p7_downsample = MaxPool2dStaticSamePadding(3, 2)
-
         self.swish = MemoryEfficientSwish() if not onnx_export else Swish()
 
-        self.first_time = first_time
-        if self.first_time:
-            self.p5_down_channel = nn.Sequential(
-                Conv2dStaticSamePadding(in_channels[2], out_channels, 1),
-                # nn.BatchNorm2d(out_channels, momentum=0.01, eps=1e-3),
-                self.norm,
-            )
-            self.p4_down_channel = nn.Sequential(
-                Conv2dStaticSamePadding(in_channels[1], out_channels, 1),
-                # nn.BatchNorm2d(out_channels, momentum=0.01, eps=1e-3),
-                self.norm,
-            )
-            self.p3_down_channel = nn.Sequential(
-                Conv2dStaticSamePadding(in_channels[0], out_channels, 1),
-                # nn.BatchNorm2d(out_channels, momentum=0.01, eps=1e-3),
-                self.norm,
-            )
+        # Conv layers
+        self.up_convs = []
+        self.down_convs = []
+        self.down_weights = []
+        self.up_weights = []
+        for idx, f in enumerate(in_features):
+            if idx != len(in_features) - 1:
+                conv = SeparableConvBlock(out_channels, norm=norm, onnx_export=onnx_export)
+                self.add_module(f"down_conv_{f}", conv)
+                self.down_convs.append(conv)
 
-            self.p5_to_p6 = nn.Sequential(
-                Conv2dStaticSamePadding(in_channels[2], out_channels, 1),
-                # nn.BatchNorm2d(out_channels, momentum=0.01, eps=1e-3),
-                self.norm,
-                MaxPool2dStaticSamePadding(3, 2)
-            )
-            self.p6_to_p7 = nn.Sequential(
-                MaxPool2dStaticSamePadding(3, 2)
-            )
+                # if no attention, just set weight to constant 1.
+                weight = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=attention)
+                # self.add_module(f"down_w_{f}", weight)
+                self.down_weights.append(weight)
 
-            self.p4_down_channel_2 = nn.Sequential(
-                Conv2dStaticSamePadding(in_channels[1], out_channels, 1),
-                # nn.BatchNorm2d(out_channels, momentum=0.01, eps=1e-3),
-                self.norm,
-            )
-            self.p5_down_channel_2 = nn.Sequential(
-                Conv2dStaticSamePadding(in_channels[2], out_channels, 1),
-                # nn.BatchNorm2d(out_channels, momentum=0.01, eps=1e-3),
-                self.norm,
-            )
+            if idx != 0:
+                conv = SeparableConvBlock(out_channels, norm=norm, onnx_export=onnx_export)
+                self.add_module(f"up_conv_{f}", conv)
+                self.up_convs.append(conv)
 
-        # Weight
-        self.p6_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-        self.p6_w1_relu = nn.ReLU()
-        self.p5_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-        self.p5_w1_relu = nn.ReLU()
-        self.p4_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-        self.p4_w1_relu = nn.ReLU()
-        self.p3_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-        self.p3_w1_relu = nn.ReLU()
+                fuse_num = 3 if idx + 1 != len(in_features) else 2
+                weight = nn.Parameter(torch.ones(fuse_num, dtype=torch.float32), requires_grad=attention)
+                # self.add_module(f"up_w_{f}", weight)
+                self.up_weights.append(weight)
+        # add fuse weights to graph
+        self.fuse_weights = nn.ParameterList([*self.down_weights, *self.up_weights])
+        # init
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                weight_init.c2_msra_fill(module)
 
-        self.p4_w2 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
-        self.p4_w2_relu = nn.ReLU()
-        self.p5_w2 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
-        self.p5_w2_relu = nn.ReLU()
-        self.p6_w2 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
-        self.p6_w2_relu = nn.ReLU()
-        self.p7_w2 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-        self.p7_w2_relu = nn.ReLU()
-
-        self.attention = attention
+        # down path should reverse the order
+        self.down_convs = self.down_convs[::-1]
+        self.down_weights = self.down_weights[::-1]
 
     def forward(self, inputs):
         """
@@ -187,180 +138,30 @@ class BiFPNBlock(nn.Module):
         # elif earlier phase, downsample to target phase's by pooling
         # elif later phase, upsample to target phase's by nearest interpolation
 
-        if self.attention:
-            p3_out, p4_out, p5_out, p6_out, p7_out = self._forward_fast_attention(inputs)
-        else:
-            p3_out, p4_out, p5_out, p6_out, p7_out = self._forward(inputs)
+        # down path
+        inputs = inputs[::-1]  # reverse the input order
+        features_td = []
+        for idx, (conv, w) in enumerate(zip(self.down_convs, self.down_weights)):
+            w_down = F.relu(w)
+            w_down = w_down / (torch.sum(w_down, dim=0) + self.epsilon)
+            features_td.append(
+                conv(self.swish(w_down[0] * inputs[idx + 1] + w_down[1] * F.interpolate(inputs[idx], scale_factor=2)))
+            )
 
-        return p3_out, p4_out, p5_out, p6_out, p7_out
+        # up path
+        inputs = inputs[::-1]
+        features_td = features_td[::-1]
+        outs = [features_td[0]]
+        for idx, (conv, w) in enumerate(zip(self.up_convs, self.up_weights)):
+            w_up = F.relu(w)
+            w_up = w_up / (torch.sum(w_up, dim=0) + self.epsilon)
+            fuse_feature = w_up[0] * inputs[idx + 1] \
+                         + w_up[1] * F.max_pool2d(outs[idx], kernel_size=3, stride=2, padding=1)
+            if idx + 1 != len(self.up_convs):
+                fuse_feature += w_up[2] * features_td[idx + 1]
+            outs.append(conv(self.swish(fuse_feature)))
 
-    def _forward_fast_attention(self, inputs):
-        if self.first_time:
-            p3, p4, p5 = inputs
-
-            p6_in = self.p5_to_p6(p5)
-            p7_in = self.p6_to_p7(p6_in)
-
-            p3_in = self.p3_down_channel(p3)
-            p4_in = self.p4_down_channel(p4)
-            p5_in = self.p5_down_channel(p5)
-
-        else:
-            # P3_0, P4_0, P5_0, P6_0 and P7_0
-            p3_in, p4_in, p5_in, p6_in, p7_in = inputs
-
-        # P7_0 to P7_2
-
-        # Weights for P6_0 and P7_0 to P6_1
-        p6_w1 = self.p6_w1_relu(self.p6_w1)
-        weight = p6_w1 / (torch.sum(p6_w1, dim=0) + self.epsilon)
-        # Connections for P6_0 and P7_0 to P6_1 respectively
-        p6_up = self.conv6_up(self.swish(weight[0] * p6_in + weight[1] * self.p6_upsample(p7_in)))
-
-        # Weights for P5_0 and P6_1 to P5_1
-        p5_w1 = self.p5_w1_relu(self.p5_w1)
-        weight = p5_w1 / (torch.sum(p5_w1, dim=0) + self.epsilon)
-        # Connections for P5_0 and P6_0 to P5_1 respectively
-        p5_up = self.conv5_up(self.swish(weight[0] * p5_in + weight[1] * self.p5_upsample(p6_up)))
-
-        # Weights for P4_0 and P5_1 to P4_1
-        p4_w1 = self.p4_w1_relu(self.p4_w1)
-        weight = p4_w1 / (torch.sum(p4_w1, dim=0) + self.epsilon)
-        # Connections for P4_0 and P5_0 to P4_1 respectively
-        p4_up = self.conv4_up(self.swish(weight[0] * p4_in + weight[1] * self.p4_upsample(p5_up)))
-
-        # Weights for P3_0 and P4_1 to P3_2
-        p3_w1 = self.p3_w1_relu(self.p3_w1)
-        weight = p3_w1 / (torch.sum(p3_w1, dim=0) + self.epsilon)
-        # Connections for P3_0 and P4_1 to P3_2 respectively
-        p3_out = self.conv3_up(self.swish(weight[0] * p3_in + weight[1] * self.p3_upsample(p4_up)))
-
-        if self.first_time:
-            p4_in = self.p4_down_channel_2(p4)
-            p5_in = self.p5_down_channel_2(p5)
-
-        # Weights for P4_0, P4_1 and P3_2 to P4_2
-        p4_w2 = self.p4_w2_relu(self.p4_w2)
-        weight = p4_w2 / (torch.sum(p4_w2, dim=0) + self.epsilon)
-        # Connections for P4_0, P4_1 and P3_2 to P4_2 respectively
-        p4_out = self.conv4_down(
-            self.swish(weight[0] * p4_in + weight[1] * p4_up + weight[2] * self.p4_downsample(p3_out)))
-
-        # Weights for P5_0, P5_1 and P4_2 to P5_2
-        p5_w2 = self.p5_w2_relu(self.p5_w2)
-        weight = p5_w2 / (torch.sum(p5_w2, dim=0) + self.epsilon)
-        # Connections for P5_0, P5_1 and P4_2 to P5_2 respectively
-        p5_out = self.conv5_down(
-            self.swish(weight[0] * p5_in + weight[1] * p5_up + weight[2] * self.p5_downsample(p4_out)))
-
-        # Weights for P6_0, P6_1 and P5_2 to P6_2
-        p6_w2 = self.p6_w2_relu(self.p6_w2)
-        weight = p6_w2 / (torch.sum(p6_w2, dim=0) + self.epsilon)
-        # Connections for P6_0, P6_1 and P5_2 to P6_2 respectively
-        p6_out = self.conv6_down(
-            self.swish(weight[0] * p6_in + weight[1] * p6_up + weight[2] * self.p6_downsample(p5_out)))
-
-        # Weights for P7_0 and P6_2 to P7_2
-        p7_w2 = self.p7_w2_relu(self.p7_w2)
-        weight = p7_w2 / (torch.sum(p7_w2, dim=0) + self.epsilon)
-        # Connections for P7_0 and P6_2 to P7_2
-        p7_out = self.conv7_down(self.swish(weight[0] * p7_in + weight[1] * self.p7_downsample(p6_out)))
-
-        return p3_out, p4_out, p5_out, p6_out, p7_out
-
-    def _forward(self, inputs):
-        if self.first_time:
-            p3, p4, p5 = inputs
-
-            p6_in = self.p5_to_p6(p5)
-            p7_in = self.p6_to_p7(p6_in)
-
-            p3_in = self.p3_down_channel(p3)
-            p4_in = self.p4_down_channel(p4)
-            p5_in = self.p5_down_channel(p5)
-
-        else:
-            # P3_0, P4_0, P5_0, P6_0 and P7_0
-            p3_in, p4_in, p5_in, p6_in, p7_in = inputs
-
-        # P7_0 to P7_2
-
-        # Connections for P6_0 and P7_0 to P6_1 respectively
-        p6_up = self.conv6_up(self.swish(p6_in + self.p6_upsample(p7_in)))
-
-        # Connections for P5_0 and P6_1 to P5_1 respectively
-        p5_up = self.conv5_up(self.swish(p5_in + self.p5_upsample(p6_up)))
-
-        # Connections for P4_0 and P5_1 to P4_1 respectively
-        p4_up = self.conv4_up(self.swish(p4_in + self.p4_upsample(p5_up)))
-
-        # Connections for P3_0 and P4_1 to P3_2 respectively
-        p3_out = self.conv3_up(self.swish(p3_in + self.p3_upsample(p4_up)))
-
-        if self.first_time:
-            p4_in = self.p4_down_channel_2(p4)
-            p5_in = self.p5_down_channel_2(p5)
-
-        # Connections for P4_0, P4_1 and P3_2 to P4_2 respectively
-        p4_out = self.conv4_down(
-            self.swish(p4_in + p4_up + self.p4_downsample(p3_out)))
-
-        # Connections for P5_0, P5_1 and P4_2 to P5_2 respectively
-        p5_out = self.conv5_down(
-            self.swish(p5_in + p5_up + self.p5_downsample(p4_out)))
-
-        # Connections for P6_0, P6_1 and P5_2 to P6_2 respectively
-        p6_out = self.conv6_down(
-            self.swish(p6_in + p6_up + self.p6_downsample(p5_out)))
-
-        # Connections for P7_0 and P6_2 to P7_2
-        p7_out = self.conv7_down(self.swish(p7_in + self.p7_downsample(p6_out)))
-
-        return p3_out, p4_out, p5_out, p6_out, p7_out
-
-
-class MaxPool2dStaticSamePadding(nn.Module):
-    """
-    created by Zylo117
-    The real keras/tensorflow MaxPool2d with same padding
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self.pool = nn.MaxPool2d(*args, **kwargs)
-        self.stride = self.pool.stride
-        self.kernel_size = self.pool.kernel_size
-
-        if isinstance(self.stride, int):
-            self.stride = [self.stride] * 2
-        elif len(self.stride) == 1:
-            self.stride = [self.stride[0]] * 2
-
-        if isinstance(self.kernel_size, int):
-            self.kernel_size = [self.kernel_size] * 2
-        elif len(self.kernel_size) == 1:
-            self.kernel_size = [self.kernel_size[0]] * 2
-
-    def forward(self, x):
-        h, w = x.shape[-2:]
-
-        h_step = math.ceil(w / self.stride[1])
-        v_step = math.ceil(h / self.stride[0])
-        h_cover_len = self.stride[1] * (h_step - 1) + 1 + (self.kernel_size[1] - 1)
-        v_cover_len = self.stride[0] * (v_step - 1) + 1 + (self.kernel_size[0] - 1)
-
-        extra_h = h_cover_len - w
-        extra_v = v_cover_len - h
-
-        left = extra_h // 2
-        right = extra_h - left
-        top = extra_v // 2
-        bottom = extra_v - top
-
-        x = F.pad(x, [left, right, top, bottom])
-
-        x = self.pool(x)
-        return x
+        return outs
 
 
 class BiFPN(Backbone):
@@ -370,7 +171,7 @@ class BiFPN(Backbone):
     """
 
     def __init__(
-        self, bottom_up, in_features, compound_coef, out_channels=-1, norm="SyncBN", export_onnx=False,
+        self, bottom_up, in_features, compound_coef, out_channels=-1, norm="SyncBN", top_block=None, export_onnx=False,
     ):
         """
         Args:
@@ -403,36 +204,20 @@ class BiFPN(Backbone):
         in_strides = [input_shapes[f].stride for f in in_features]
         in_channels = [input_shapes[f].channels for f in in_features]
 
-        # backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6]
-        bifpn_num_filters = [64, 88, 112, 160, 224, 288, 384, 384]
         bifpn_cell_repeats = [3, 4, 5, 6, 7, 7, 8, 8]
         input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536]
 
-        out_channels = out_channels if out_channels > 0 else bifpn_num_filters[compound_coef]
-
-        # conv_channel_coef = {
-        #     # the channels of P3/P4/P5.
-        #     0: [40, 112, 320],
-        #     1: [40, 112, 320],
-        #     2: [48, 120, 352],
-        #     3: [48, 136, 384],
-        #     4: [56, 160, 448],
-        #     5: [64, 176, 512],
-        #     6: [72, 200, 576],
-        #     7: [72, 200, 576],
-        # }
-
-        self.bifpn = nn.Sequential(
-            *[BiFPNBlock(
-                out_channels=out_channels,
-                in_channels=in_channels,
-                first_time=True if _ == 0 else False,
-                norm=norm,
-                onnx_export=export_onnx,
-                attention=True if compound_coef < 6 else False
+        use_bias = norm == ""
+        self.lateral_convs = []
+        for idx, in_channel in enumerate(in_channels):
+            conv = nn.Sequential(
+                nn.Conv2d(in_channel, out_channels, kernel_size=1, bias=use_bias),
+                get_norm(norm, out_channels),
             )
-            for _ in range(bifpn_cell_repeats[compound_coef])]
-        )
+            weight_init.c2_xavier_fill(conv[0])
+            stage = int(math.log2(in_strides[idx]))
+            self.add_module(f"bifpn_lateral{stage}", conv)
+            self.lateral_convs.append(conv)
 
         # Place convs into top-down order (from low to high resolution)
         # to make the top-down computation in forward clearer.
@@ -441,12 +226,28 @@ class BiFPN(Backbone):
         # Return feature names are "p<stage>", like ["p2", "p3", ..., "p6"]
         self._out_feature_strides = {"p{}".format(int(math.log2(s))): s for s in in_strides}
         # TODO: rebuild bifpn in more compatible way, such as FPN
-        self._out_feature_strides['p6'] = 64
-        self._out_feature_strides['p7'] = 128
+        self.top_block = top_block
+        # top block output feature maps.
+        if self.top_block is not None:
+            for s in range(stage, stage + self.top_block.num_levels):
+                self._out_feature_strides["p{}".format(s + 1)] = 2 ** (s + 1)
+        # self._out_feature_strides['p6'] = 64
+        # self._out_feature_strides['p7'] = 128
 
         self._out_features = list(self._out_feature_strides.keys())
         self._out_feature_channels = {k: out_channels for k in self._out_features}
         self._size_divisibility = max([v for _, v in self._out_feature_strides.items()])
+
+        # top down and bottom up bifpn tower
+        self.bifpn_tower = nn.Sequential(
+            *[BiFPNBlock(
+                in_features=self._out_features,
+                out_channels=out_channels,
+                norm=norm,
+                onnx_export=export_onnx,
+                attention=True if compound_coef < 6 else False
+            ) for _ in range(bifpn_cell_repeats[compound_coef])]
+        )
 
     @property
     def size_divisibility(self):
@@ -467,7 +268,17 @@ class BiFPN(Backbone):
         """
         bottom_up_features = self.bottom_up(x)
         x = [bottom_up_features[f] for f in self.in_features]
-        results = self.bifpn(x)
+
+        for idx, conv in enumerate(self.lateral_convs):
+            x[idx] = conv(x[idx])
+
+        if self.top_block is not None:
+            top_block_in_feature = bottom_up_features.get(self.top_block.in_feature, None)
+            if top_block_in_feature is None:
+                top_block_in_feature = x[self._out_features.index(self.top_block.in_feature)]
+            x.extend(self.top_block(top_block_in_feature))
+
+        results = self.bifpn_tower(x)
 
         assert len(self._out_features) == len(results)
         return dict(zip(self._out_features, results))
@@ -488,15 +299,26 @@ def build_efficientnet_bifpn_backbone(cfg, input_shape):
     compound_coef = cfg.MODEL.EFFICIENTNET.COMPOUND_COEFFICIENT
     in_features = cfg.MODEL.BIFPN.IN_FEATURES
     out_channels = cfg.MODEL.BIFPN.OUT_CHANNELS
-    # in_channels_top = bottom_up.output_shape()['p5'].channels
+
+    bifpn_num_filters = [64, 88, 112, 160, 224, 288, 384, 384]
+    out_channels = out_channels if out_channels > 0 else bifpn_num_filters[compound_coef]
+    in_channels_top = bottom_up.output_shape()['p5'].channels
+    top_levels = cfg.MODEL.BIFPN.TOP_LEVELS
     export_onnx = cfg.MODEL.EXPORT_ONNX
 
+    if top_levels == 2:
+        top_block = LastLevelP6P7(in_channels_top, out_channels, "p5")
+    if top_levels == 1:
+        top_block = LastLevelMaxPool(in_channels_top, out_channels, "p5")
+    elif top_levels == 0:
+        top_block = None
     backbone = BiFPN(
         bottom_up=bottom_up,
         in_features=in_features,
         compound_coef=compound_coef,
         out_channels=out_channels,
         norm=cfg.MODEL.BIFPN.NORM,
+        top_block=top_block,
         export_onnx=export_onnx,
     )
 

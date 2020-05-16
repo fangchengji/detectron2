@@ -18,7 +18,7 @@ from detectron2.modeling.backbone.build import BACKBONE_REGISTRY
 from detectron2.layers import ShapeSpec, get_norm
 
 
-from .fpn import FPN, LastLevelMaxPool, LastLevelP6P7
+from .fpn import FPN, LastLevelP6P7, LastLevelP6
 
 
 # Parameters for the entire model (stem, all blocks, and head)
@@ -654,9 +654,9 @@ class Conv2dStaticSamePadding(nn.Module):
             self.kernel_size = [self.kernel_size[0]] * 2
 
         # init weight
-        nn.init.xavier_normal_(self.conv.weight)
-        if self.conv.bias is not None:  # pyre-ignore
-            nn.init.constant_(self.conv.bias, 0)
+        # nn.init.xavier_normal_(self.conv.weight)
+        # if self.conv.bias is not None:  # pyre-ignore
+        #     nn.init.constant_(self.conv.bias, 0)
 
     def forward(self, x):
         h, w = x.shape[-2:]
@@ -713,32 +713,20 @@ def build_efficientnet_fpn_backbone(cfg, input_shape):
 
     in_features = cfg.MODEL.FPN.IN_FEATURES
     out_channels = cfg.MODEL.FPN.OUT_CHANNELS
-    backbone = FPN(
-        bottom_up=bottom_up,
-        in_features=in_features,
-        out_channels=out_channels,
-        norm=cfg.MODEL.FPN.NORM,
-        top_block=LastLevelMaxPool(),
-        fuse_type=cfg.MODEL.FPN.FUSE_TYPE,
-    )
-
-    return backbone
-
-
-@BACKBONE_REGISTRY.register()
-def build_efficientnet_p6p7_fpn_backbone(cfg, input_shape):
-    # feature extraction backbone
-    bottom_up = build_efficientnet_backbone(cfg, input_shape)
-
-    in_features = cfg.MODEL.FPN.IN_FEATURES
-    out_channels = cfg.MODEL.FPN.OUT_CHANNELS
+    top_levels = cfg.MODEL.FPN.TOP_LEVELS
     in_channels_top = bottom_up.output_shape()['p5'].channels
+    if top_levels == 2:
+        top_block = LastLevelP6P7(in_channels_top, out_channels, "p5")
+    if top_levels == 1:
+        top_block = LastLevelP6(in_channels_top, out_channels, "p5")
+    elif top_levels == 0:
+        top_block = None
     backbone = FPN(
         bottom_up=bottom_up,
         in_features=in_features,
         out_channels=out_channels,
         norm=cfg.MODEL.FPN.NORM,
-        top_block=LastLevelP6P7(in_channels_top, out_channels, "p5"),
+        top_block=top_block,
         fuse_type=cfg.MODEL.FPN.FUSE_TYPE,
     )
 

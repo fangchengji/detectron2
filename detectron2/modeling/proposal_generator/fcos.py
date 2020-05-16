@@ -171,6 +171,8 @@ class FCOSHead(nn.Module):
                         "share": (cfg.MODEL.FCOS.NUM_SHARE_CONVS,
                                   cfg.MODEL.FCOS.USE_DEFORMABLE)}
         norm = None if cfg.MODEL.FCOS.NORM == "none" else cfg.MODEL.FCOS.NORM
+        conv = cfg.MODEL.FCOS.TOWER_CONV
+        activation = cfg.MODEL.FCOS.TOWER_ACTIVATION
 
         in_channels = [s.channels for s in input_shape]
         assert len(set(in_channels)) == 1, "Each level must have the same channel!"
