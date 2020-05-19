@@ -497,8 +497,8 @@ _C.MODEL.EFFICIENTDET.IN_FEATURES = ["p3", "p4", "p5", "p6", "p7"]
 
 # Convolutions to use in the cls and bbox tower
 # NOTE: this doesn't include the last conv for logits
-_C.MODEL.EFFICIENTDET.NUM_CONVS = 4
-
+_C.MODEL.EFFICIENTDET.NUM_CONVS = -1
+_C.MODEL.EFFICIENTDET.NORM = "SyncBN"
 # IoU overlap ratio [bg, fg] for labeling anchors.
 # Anchors with < bg are labeled negative (0)
 # Anchors  with >= bg and < fg are ignored (-1)
