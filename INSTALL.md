@@ -2,7 +2,7 @@
 
 Our [Colab Notebook](https://colab.research.google.com/drive/16jcaJoc6bCFAQ96jDe2HwtXj7BMD_-m5)
 has step-by-step instructions that install detectron2.
-The [Dockerfile](docker/Dockerfile)
+The [Dockerfile](docker)
 also installs detectron2 with a few simple commands.
 
 ### Requirements
@@ -33,7 +33,7 @@ python -m pip install -e detectron2
 To __rebuild__ detectron2 that's built from a local clone, use `rm -rf build/ **/*.so` to clean the
 old build first. You often need to rebuild detectron2 after reinstalling PyTorch.
 
-### Install Pre-Built Detectron2
+### Install Pre-Built Detectron2 (Linux only)
 ```
 # for CUDA 10.1:
 python -m pip install detectron2 -f https://dl.fbaipublicfiles.com/detectron2/wheels/cu101/index.html
@@ -43,7 +43,7 @@ You can replace cu101 with "cu{100,92}" or "cpu".
 Note that:
 1. Such installation has to be used with certain version of official PyTorch release.
    See [releases](https://github.com/facebookresearch/detectron2/releases) for requirements.
-   It will not work with your custom build of PyTorch.
+   It will not work with a different version of PyTorch or a non-official build of PyTorch.
 2. Such installation is out-of-date w.r.t. master branch of detectron2. It may not be
 	 compatible with the master branch of a research project that uses detectron2 (e.g. those in
 	 [projects](projects) or [meshrcnn](https://github.com/facebookresearch/meshrcnn/)).
@@ -144,7 +144,7 @@ Two possibilities:
 
 <details>
 <summary>
-Undefined CUDA symbols or cannot open libcudart.so.
+Undefined CUDA symbols; cannot open libcudart.so; other nvcc failures.
 </summary>
 <br/>
 The version of NVCC you use to build detectron2 or torchvision does

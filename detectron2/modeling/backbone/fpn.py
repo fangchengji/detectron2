@@ -24,7 +24,7 @@ __all__ = [
 
 class FPN(Backbone):
     """
-    This module implements Feature Pyramid Network.
+    This module implements :paper:`FPN`.
     It creates pyramid features built on top of some input feature maps.
     """
 
