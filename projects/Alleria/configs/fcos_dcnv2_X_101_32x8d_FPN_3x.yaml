@@ -1,0 +1,48 @@
+MODEL:
+  META_ARCHITECTURE: "OneStageDetector"
+#  WEIGHTS: "detectron2://ImageNetPretrained/FAIR/X-101-32x8d.pkl"
+  WEIGHTS: "output/fcos_dcnv2_x101_fpn_3x/model_final.pth"
+  MASK_ON: False
+  KEYPOINT_ON: False
+  PIXEL_STD: [57.375, 57.120, 58.395]
+  BACKBONE:
+    NAME: "build_fcos_resnet_fpn_backbone"
+  RESNETS:
+    DEPTH: 101
+    STRIDE_IN_1X1: False
+    NUM_GROUPS: 32
+    WIDTH_PER_GROUP: 8
+    DEFORM_ON_PER_STAGE: (False, False, True, True)
+    DEFORM_MODULATED: True
+    OUT_FEATURES: ["res3", "res4", "res5"]
+  FPN:
+    IN_FEATURES: ["res3", "res4", "res5"]
+  PROPOSAL_GENERATOR:
+    NAME: "FCOS"
+  FCOS:
+    NUM_CLASSES: 1
+    NMS_TH: 0.6
+    INFERENCE_TH_TEST: 0.05
+    PRE_NMS_TOPK_TRAIN: 2000
+    PRE_NMS_TOPK_TEST: 1000
+    LOC_LOSS_TYPE: 'diou'
+    NMS_TYPE: 'nms'
+    NORM: "GN"
+    USE_DEFORMABLE: True
+DATASETS:
+  TRAIN: ("wheat_coco_train",)
+  TEST: ("wheat_coco_val",)
+SOLVER:
+  IMS_PER_BATCH: 16
+  BASE_LR: 0.01
+  WARMUP_FACTOR: 0.00125
+  WARMUP_ITERS: 800
+  STEPS: (6000, 8000)
+  MAX_ITER: 9000
+INPUT:
+  CROP:
+    ENABLED: False
+  MIN_SIZE_TRAIN: (640, 672, 704, 736, 768, 800)
+OUTPUT_DIR: "output/fcos_dcnv2_x101_fpn_3x"
+VERSION: 2
+
