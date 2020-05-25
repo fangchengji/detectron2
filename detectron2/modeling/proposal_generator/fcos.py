@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from detectron2.layers import ShapeSpec, cat, ml_nms, diou_nms
 from detectron2.modeling.proposal_generator.build import PROPOSAL_GENERATOR_REGISTRY
 
-from detectron2.layers import DFConv2d, IOULoss, get_norm
+from detectron2.layers import DFConv2d, FCOSIOULoss, get_norm
 from detectron2.structures import Instances, Boxes
 from detectron2.utils.comm import get_world_size, reduce_sum
 from fvcore.nn import sigmoid_focal_loss_jit
@@ -49,7 +49,7 @@ class FCOS(nn.Module):
         self.thresh_with_ctr      = cfg.MODEL.FCOS.THRESH_WITH_CTR
         self.mask_on              = cfg.MODEL.MASK_ON #ywlee
         # fmt: on
-        self.iou_loss = IOULoss(cfg.MODEL.FCOS.LOC_LOSS_TYPE)
+        self.iou_loss = FCOSIOULoss(cfg.MODEL.FCOS.LOC_LOSS_TYPE)
         self.nms_type = cfg.MODEL.FCOS.NMS_TYPE
         # generate sizes of interest
         soi = []
@@ -60,6 +60,19 @@ class FCOS(nn.Module):
         soi.append([prev_size, INF])
         self.sizes_of_interest = soi
         self.fcos_head = FCOSHead(cfg, [input_shape[f] for f in self.in_features])
+        self.fcos_output = FCOSOutputs(
+            self.focal_loss_alpha,
+            self.focal_loss_gamma,
+            self.iou_loss,
+            self.center_sample,
+            self.sizes_of_interest,
+            self.strides,
+            self.radius,
+            self.fcos_head.num_classes,
+            self.nms_thresh,
+            self.thresh_with_ctr,
+            nms_type=self.nms_type,
+        )
 
         # for onnx model export
         self.export_onnx = cfg.MODEL.EXPORT_ONNX
@@ -93,38 +106,27 @@ class FCOS(nn.Module):
             pre_nms_topk = self.pre_nms_topk_test
             post_nms_topk = self.post_nms_topk_test
 
-        outputs = FCOSOutputs(
+        self.fcos_output(
             images,
             locations,
             logits_pred,
             reg_pred,
             ctrness_pred,
-            self.focal_loss_alpha,
-            self.focal_loss_gamma,
-            self.iou_loss,
-            self.center_sample,
-            self.sizes_of_interest,
-            self.strides,
-            self.radius,
-            self.fcos_head.num_classes,
             pre_nms_thresh,
             pre_nms_topk,
-            self.nms_thresh,
             post_nms_topk,
-            self.thresh_with_ctr,
             gt_instances,
-            nms_type=self.nms_type,
         )
 
         if self.training:
-            losses, _ = outputs.losses()
+            losses, _ = self.fcos_output.losses()
             if self.mask_on:
-                proposals = outputs.predict_proposals()
+                proposals = self.fcos_output.predict_proposals()
                 return proposals, losses
             else:
                 return None, losses
         else:
-            proposals = outputs.predict_proposals()
+            proposals = self.fcos_output.predict_proposals()
             return proposals, {}
 
     def compute_locations(self, features):
@@ -171,8 +173,6 @@ class FCOSHead(nn.Module):
                         "share": (cfg.MODEL.FCOS.NUM_SHARE_CONVS,
                                   cfg.MODEL.FCOS.USE_DEFORMABLE)}
         norm = None if cfg.MODEL.FCOS.NORM == "none" else cfg.MODEL.FCOS.NORM
-        conv = cfg.MODEL.FCOS.TOWER_CONV
-        activation = cfg.MODEL.FCOS.TOWER_ACTIVATION
 
         in_channels = [s.channels for s in input_shape]
         assert len(set(in_channels)) == 1, "Each level must have the same channel!"
@@ -288,73 +288,14 @@ def compute_ctrness_targets(reg_targets):
     return torch.sqrt(ctrness)
 
 
-def fcos_losses(
-        labels,
-        reg_targets,
-        logits_pred,
-        reg_pred,
-        ctrness_pred,
-        focal_loss_alpha,
-        focal_loss_gamma,
-        iou_loss,
-):
-    num_classes = logits_pred.size(1)
-    labels = labels.flatten()
-
-    pos_inds = torch.nonzero(labels != num_classes).squeeze(1)
-    num_pos_local = pos_inds.numel()
-    num_gpus = get_world_size()
-    total_num_pos = reduce_sum(pos_inds.new_tensor([num_pos_local])).item()
-    num_pos_avg = max(total_num_pos / num_gpus, 1.0)
-
-    # prepare one_hot
-    class_target = torch.zeros_like(logits_pred)
-    class_target[pos_inds, labels[pos_inds]] = 1
-
-    class_loss = sigmoid_focal_loss_jit(
-        logits_pred,
-        class_target,
-        alpha=focal_loss_alpha,
-        gamma=focal_loss_gamma,
-        reduction="sum",
-    ) / num_pos_avg
-
-    reg_pred = reg_pred[pos_inds]
-    reg_targets = reg_targets[pos_inds]
-    ctrness_pred = ctrness_pred[pos_inds]
-
-    ctrness_targets = compute_ctrness_targets(reg_targets)
-    ctrness_targets_sum = ctrness_targets.sum()
-    ctrness_norm = max(reduce_sum(ctrness_targets_sum).item() / num_gpus, 1e-6)
-
-    reg_loss = iou_loss(
-        reg_pred,
-        reg_targets,
-        ctrness_targets
-    ) / ctrness_norm
-
-    ctrness_loss = F.binary_cross_entropy_with_logits(
-        ctrness_pred,
-        ctrness_targets,
-        reduction="sum"
-    ) / num_pos_avg
-
-    losses = {
-        "loss_fcos_cls": class_loss,
-        "loss_fcos_loc": reg_loss,
-        "loss_fcos_ctr": ctrness_loss
-    }
-    return losses, {}
-
-
 class FCOSOutputs(object):
     def __init__(
             self,
-            images,
-            locations,
-            logits_pred,
-            reg_pred,
-            ctrness_pred,
+            # images,
+            # locations,
+            # logits_pred,
+            # reg_pred,
+            # ctrness_pred,
             focal_loss_alpha,
             focal_loss_gamma,
             iou_loss,
@@ -363,13 +304,58 @@ class FCOSOutputs(object):
             strides,
             radius,
             num_classes,
-            pre_nms_thresh,
-            pre_nms_top_n,
+            # pre_nms_thresh,
+            # pre_nms_top_n,
             nms_thresh,
-            fpn_post_nms_top_n,
+            # fpn_post_nms_top_n,
             thresh_with_ctr,
-            gt_instances=None,
+            # gt_instances=None,
             nms_type='nms',
+    ):
+        # self.logits_pred = logits_pred
+        # self.reg_pred = reg_pred
+        # self.ctrness_pred = ctrness_pred
+        # self.locations = locations
+
+        # self.gt_instances = gt_instances
+        # self.num_feature_maps = len(logits_pred)
+        # self.num_images = len(images)
+        # self.image_sizes = images.image_sizes
+        self.focal_loss_alpha = focal_loss_alpha
+        self.focal_loss_gamma = focal_loss_gamma
+        self.iou_loss = iou_loss
+        self.center_sample = center_sample
+        self.sizes_of_interest = sizes_of_interest
+        self.strides = strides
+        self.radius = radius
+        self.num_classes = num_classes
+        # self.pre_nms_thresh = pre_nms_thresh
+        # self.pre_nms_top_n = pre_nms_top_n
+        self.nms_thresh = nms_thresh
+        # self.fpn_post_nms_top_n = fpn_post_nms_top_n
+        self.thresh_with_ctr = thresh_with_ctr
+        self.nms_type = nms_type
+
+        """
+        In Detectron1, loss is normalized by number of foreground samples in the batch.
+        When batch size is 1 per GPU, #foreground has a large variance and
+        using it lead to lower performance. Here we maintain an EMA of #foreground to
+        stabilize the normalizer.
+        """
+        self.loss_normalizer = 100  # initialize with any reasonable #fg that's not too small
+        self.loss_normalizer_momentum = 0.9
+
+    def __call__(
+        self,
+        images,
+        locations,
+        logits_pred,
+        reg_pred,
+        ctrness_pred,
+        pre_nms_thresh,
+        pre_nms_top_n,
+        fpn_post_nms_top_n,
+        gt_instances=None,
     ):
         self.logits_pred = logits_pred
         self.reg_pred = reg_pred
@@ -380,20 +366,10 @@ class FCOSOutputs(object):
         self.num_feature_maps = len(logits_pred)
         self.num_images = len(images)
         self.image_sizes = images.image_sizes
-        self.focal_loss_alpha = focal_loss_alpha
-        self.focal_loss_gamma = focal_loss_gamma
-        self.iou_loss = iou_loss
-        self.center_sample = center_sample
-        self.sizes_of_interest = sizes_of_interest
-        self.strides = strides
-        self.radius = radius
-        self.num_classes = num_classes
+
         self.pre_nms_thresh = pre_nms_thresh
         self.pre_nms_top_n = pre_nms_top_n
-        self.nms_thresh = nms_thresh
         self.fpn_post_nms_top_n = fpn_post_nms_top_n
-        self.thresh_with_ctr = thresh_with_ctr
-        self.nms_type = nms_type
 
     def _transpose(self, training_targets, num_loc_list):
         '''
@@ -575,7 +551,7 @@ class FCOSOutputs(object):
                 x.reshape(-1, 4) for x in reg_targets
             ], dim=0, )
 
-        return fcos_losses(
+        return self.fcos_losses(
             labels,
             reg_targets,
             logits_pred,
@@ -585,6 +561,70 @@ class FCOSOutputs(object):
             self.focal_loss_gamma,
             self.iou_loss
         )
+
+    def fcos_losses(
+        self,
+        labels,
+        reg_targets,
+        logits_pred,
+        reg_pred,
+        ctrness_pred,
+        focal_loss_alpha,
+        focal_loss_gamma,
+        iou_loss,
+    ):
+        num_classes = logits_pred.size(1)
+        labels = labels.flatten()
+
+        pos_inds = torch.nonzero(labels != num_classes).squeeze(1)
+        num_pos_local = pos_inds.numel()
+        num_gpus = get_world_size()
+        total_num_pos = reduce_sum(pos_inds.new_tensor([num_pos_local])).item()
+        num_pos_avg = max(total_num_pos / num_gpus, 1.0)
+
+        # self.loss_normalizer = (
+        #     self.loss_normalizer_momentum * self.loss_normalizer
+        #     + (1 - self.loss_normalizer_momentum) * num_pos_avg
+        # )
+
+        # prepare one_hot
+        class_target = torch.zeros_like(logits_pred)
+        class_target[pos_inds, labels[pos_inds]] = 1
+
+        class_loss = sigmoid_focal_loss_jit(
+            logits_pred,
+            class_target,
+            alpha=focal_loss_alpha,
+            gamma=focal_loss_gamma,
+            reduction="sum",
+        ) / num_pos_avg
+
+        reg_pred = reg_pred[pos_inds]
+        reg_targets = reg_targets[pos_inds]
+        ctrness_pred = ctrness_pred[pos_inds]
+
+        ctrness_targets = compute_ctrness_targets(reg_targets)
+        ctrness_targets_sum = ctrness_targets.sum()
+        ctrness_norm = max(reduce_sum(ctrness_targets_sum).item() / num_gpus, 1e-6)
+
+        reg_loss = iou_loss(
+            reg_pred,
+            reg_targets,
+            ctrness_targets
+        ) / ctrness_norm
+
+        ctrness_loss = F.binary_cross_entropy_with_logits(
+            ctrness_pred,
+            ctrness_targets,
+            reduction="sum"
+        ) / num_pos_avg
+
+        losses = {
+            "loss_fcos_cls": class_loss,
+            "loss_fcos_loc": reg_loss,
+            "loss_fcos_ctr": ctrness_loss
+        }
+        return losses, {}
 
     def predict_proposals(self):
         sampled_boxes = []

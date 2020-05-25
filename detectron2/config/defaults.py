@@ -558,10 +558,6 @@ _C.MODEL.FCOS.SIZES_OF_INTEREST = [64, 128, 256, 512]
 _C.MODEL.FCOS.USE_RELU = True
 _C.MODEL.FCOS.USE_DEFORMABLE = False
 
-# the type of fcos tower conv type, support conv or dw_conv
-_C.MODEL.FCOS.TOWER_CONV = 'conv'
-# the type of fcos tower activation type, support swish or relu
-_C.MODEL.FCOS.TOWER_ACTIVATION = 'relu'
 # the number of convolutions used in the cls and bbox tower
 _C.MODEL.FCOS.NUM_CLS_CONVS = 4
 _C.MODEL.FCOS.NUM_BOX_CONVS = 4
