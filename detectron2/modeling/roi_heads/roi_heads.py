@@ -7,7 +7,7 @@ import torch
 from torch import nn
 
 from detectron2.config import configurable
-from detectron2.layers import ShapeSpec
+from detectron2.layers import ShapeSpec, nonzero_tuple
 from detectron2.structures import Boxes, ImageList, Instances, pairwise_iou
 from detectron2.utils.events import get_event_storage
 from detectron2.utils.registry import Registry
@@ -111,7 +111,7 @@ def select_proposals_with_visible_keypoints(proposals: List[Instances]) -> List[
             & (ys <= proposal_boxes[:, :, 3])
         )
         selection = (kp_in_box & vis_mask).any(dim=1)
-        selection_idxs = torch.nonzero(selection, as_tuple=True)[0]
+        selection_idxs = nonzero_tuple(selection)[0]
         all_num_fg.append(selection_idxs.numel())
         ret.append(proposals_per_image[selection_idxs])
 
@@ -140,7 +140,7 @@ class ROIHeads(torch.nn.Module):
         *,
         num_classes,
         batch_size_per_image,
-        positive_sample_fraction,
+        positive_fraction,
         proposal_matcher,
         proposal_append_gt=True
     ):
@@ -149,15 +149,15 @@ class ROIHeads(torch.nn.Module):
 
         Args:
             num_classes (int): number of classes. Used to label background proposals.
-            batch_size_per_image (int): number of proposals to use for training
-            positive_sample_fraction (float): fraction of positive (foreground) proposals
-                to use for training.
+            batch_size_per_image (int): number of proposals to sample for training
+            positive_fraction (float): fraction of positive (foreground) proposals
+                to sample for training.
             proposal_matcher (Matcher): matcher that matches proposals and ground truth
             proposal_append_gt (bool): whether to include ground truth as proposals as well
         """
         super().__init__()
         self.batch_size_per_image = batch_size_per_image
-        self.positive_sample_fraction = positive_sample_fraction
+        self.positive_fraction = positive_fraction
         self.num_classes = num_classes
         self.proposal_matcher = proposal_matcher
         self.proposal_append_gt = proposal_append_gt
@@ -166,7 +166,7 @@ class ROIHeads(torch.nn.Module):
     def from_config(cls, cfg):
         return {
             "batch_size_per_image": cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE,
-            "positive_sample_fraction": cfg.MODEL.ROI_HEADS.POSITIVE_FRACTION,
+            "positive_fraction": cfg.MODEL.ROI_HEADS.POSITIVE_FRACTION,
             "num_classes": cfg.MODEL.ROI_HEADS.NUM_CLASSES,
             "proposal_append_gt": cfg.MODEL.ROI_HEADS.PROPOSAL_APPEND_GT,
             # Matcher to assign box proposals to gt boxes
@@ -209,7 +209,7 @@ class ROIHeads(torch.nn.Module):
             gt_classes = torch.zeros_like(matched_idxs) + self.num_classes
 
         sampled_fg_idxs, sampled_bg_idxs = subsample_labels(
-            gt_classes, self.batch_size_per_image, self.positive_sample_fraction, self.num_classes
+            gt_classes, self.batch_size_per_image, self.positive_fraction, self.num_classes
         )
 
         sampled_idxs = torch.cat([sampled_fg_idxs, sampled_bg_idxs], dim=0)
@@ -225,7 +225,7 @@ class ROIHeads(torch.nn.Module):
         training labels to the proposals.
         It returns ``self.batch_size_per_image`` random samples from proposals and groundtruth
         boxes, with a fraction of positives that is no larger than
-        ``self.positive_sample_fraction``.
+        ``self.positive_fraction``.
 
         Args:
             See :meth:`ROIHeads.forward`
