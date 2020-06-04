@@ -1,5 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
-from .wrappers import BatchNorm2d, Conv2d, ConvTranspose2d, cat, interpolate, Linear
+from .wrappers import BatchNorm2d, Conv2d, ConvTranspose2d, cat, interpolate, Linear, nonzero_tuple
 from .batch_norm import FrozenBatchNorm2d, get_norm, NaiveSyncBatchNorm
 from .deform_conv import DeformConv, ModulatedDeformConv, DFConv2d
 from .mask_ops import paste_masks_in_image

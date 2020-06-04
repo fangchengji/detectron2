@@ -45,6 +45,8 @@ def add_densepose_config(cfg: CN):
     _C.MODEL.ROI_DENSEPOSE_HEAD.PART_WEIGHTS = 1.0
     # Loss weights for UV regression.
     _C.MODEL.ROI_DENSEPOSE_HEAD.POINT_REGRESSION_WEIGHTS = 0.01
+    # Coarse segmentation is trained using instance segmentation task data
+    _C.MODEL.ROI_DENSEPOSE_HEAD.COARSE_SEGM_TRAINED_BY_MASKS = False
     # For Decoder
     _C.MODEL.ROI_DENSEPOSE_HEAD.DECODER_ON = True
     _C.MODEL.ROI_DENSEPOSE_HEAD.DECODER_NUM_CLASSES = 256
@@ -56,13 +58,19 @@ def add_densepose_config(cfg: CN):
     _C.MODEL.ROI_DENSEPOSE_HEAD.DEEPLAB.NORM = "GN"
     _C.MODEL.ROI_DENSEPOSE_HEAD.DEEPLAB.NONLOCAL_ON = 0
     # Confidences
-    # Enable learning confidences (variances) along with the actual values
+    # Enable learning UV confidences (variances) along with the actual values
     _C.MODEL.ROI_DENSEPOSE_HEAD.UV_CONFIDENCE = CN({"ENABLED": False})
     # UV confidence lower bound
     _C.MODEL.ROI_DENSEPOSE_HEAD.UV_CONFIDENCE.EPSILON = 0.01
+    # Enable learning segmentation confidences (variances) along with the actual values
+    _C.MODEL.ROI_DENSEPOSE_HEAD.SEGM_CONFIDENCE = CN({"ENABLED": False})
+    # Segmentation confidence lower bound
+    _C.MODEL.ROI_DENSEPOSE_HEAD.SEGM_CONFIDENCE.EPSILON = 0.01
     # Statistical model type for confidence learning, possible values:
     # - "iid_iso": statistically independent identically distributed residuals
     #    with isotropic covariance
     # - "indep_aniso": statistically independent residuals with anisotropic
     #    covariances
     _C.MODEL.ROI_DENSEPOSE_HEAD.UV_CONFIDENCE.TYPE = "iid_iso"
+    # List of angles for rotation in data augmentation during training
+    _C.INPUT.ROTATION_ANGLES = [0]

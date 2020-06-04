@@ -184,6 +184,7 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
+html_css_files = ["css/custom.css"]
 
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.
@@ -258,17 +259,20 @@ texinfo_documents = [
 todo_include_todos = True
 
 
-_DEPRECATED_NAMES = set()
-
-
 def autodoc_skip_member(app, what, name, obj, skip, options):
     # we hide something deliberately
     if getattr(obj, "__HIDE_SPHINX_DOC__", False):
         return True
-    # Hide some names that are deprecated or not intended to be used
-    if name in _DEPRECATED_NAMES:
-        return True
-    return None
+
+    # Hide some that are deprecated or not intended to be used
+    _DEPRECATED = {"ResNetBlockBase"}
+    try:
+        if obj.__doc__.lower().strip().startswith("deprecated") or name in _DEPRECATED:
+            print("Skipping deprecated object: {}".format(name))
+            return True
+    except:
+        pass
+    return skip
 
 
 _PAPER_DATA = {
