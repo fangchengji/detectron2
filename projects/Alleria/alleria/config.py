@@ -3,7 +3,7 @@
 # @Author  : fangcheng.ji
 # @FileName: config.py
 
-from detectron2.config import CfgNode as CN
+# from detectron2.config import CfgNode as CN
 
 
 def add_alleria_config(cfg):
@@ -12,7 +12,6 @@ def add_alleria_config(cfg):
     # ---------------------------------------------------------------------------- #
     # Data Augmentation
     # ---------------------------------------------------------------------------- #
-    _C.DATALOADER = CN()
     # mosaic augmentation
     _C.DATALOADER.MOSAIC_AUGMENTATION = 0.0
     # mix-up augmentation

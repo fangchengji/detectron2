@@ -23,7 +23,7 @@ from detectron2.modeling.anchor_generator import build_anchor_generator
 from detectron2.modeling.box_regression import Box2BoxTransform
 from detectron2.modeling.matcher import Matcher
 from detectron2.modeling.meta_arch.retinanet import \
-    RetinaNet, permute_to_N_HWA_K, permute_all_cls_and_box_to_N_HWA_K_and_concat
+    RetinaNet, permute_to_N_HWA_K
 
 
 @PROPOSAL_GENERATOR_REGISTRY.register()
