@@ -35,7 +35,7 @@ _PREDEFINED_DATASETS = {
 # All fashion categories, together with their nice-looking visualization colors
 # It's from https://github.com/cocodataset/panopticapi/blob/master/panoptic_COCO_CATEGORIES .json
 COCO_CATEGORIES = [
-    {"color": [220, 20, 60], "isthing": 1, "id": 1, "name": "wheat"},
+    {"color": [255, 0, 0], "isthing": 1, "id": 1, "name": "wheat"},
 ]
 
 

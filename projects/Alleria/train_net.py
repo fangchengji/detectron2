@@ -27,18 +27,16 @@ from detectron2.config import get_cfg
 from detectron2.data import MetadataCatalog
 from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, hooks, launch
 from detectron2.evaluation import (
-    CityscapesInstanceEvaluator,
-    CityscapesSemSegEvaluator,
-    COCOEvaluator,
-    COCOPanopticEvaluator,
     DatasetEvaluators,
-    LVISEvaluator,
-    PascalVOCDetectionEvaluator,
     SemSegEvaluator,
     verify_results,
 )
 from detectron2.modeling import GeneralizedRCNNWithTTA
-from alleria.datasets import register_all_datasets
+
+from alleria.data.loader import build_detection_train_loader
+from alleria.evaluation import WheatEvaluator
+from alleria.data.datasets import register_all_datasets
+from alleria.config import add_alleria_config
 
 
 class Trainer(DefaultTrainer):
@@ -73,23 +71,7 @@ class Trainer(DefaultTrainer):
                 )
             )
         if evaluator_type in ["coco", "coco_panoptic_seg"]:
-            evaluator_list.append(COCOEvaluator(dataset_name, cfg, True, output_folder))
-        if evaluator_type == "coco_panoptic_seg":
-            evaluator_list.append(COCOPanopticEvaluator(dataset_name, output_folder))
-        if evaluator_type == "cityscapes_instance":
-            assert (
-                torch.cuda.device_count() >= comm.get_rank()
-            ), "CityscapesEvaluator currently do not work with multiple machines."
-            return CityscapesInstanceEvaluator(dataset_name)
-        if evaluator_type == "cityscapes_sem_seg":
-            assert (
-                torch.cuda.device_count() >= comm.get_rank()
-            ), "CityscapesEvaluator currently do not work with multiple machines."
-            return CityscapesSemSegEvaluator(dataset_name)
-        elif evaluator_type == "pascal_voc":
-            return PascalVOCDetectionEvaluator(dataset_name)
-        elif evaluator_type == "lvis":
-            return LVISEvaluator(dataset_name, cfg, True, output_folder)
+            evaluator_list.append(WheatEvaluator(dataset_name, cfg, True, output_folder))
         if len(evaluator_list) == 0:
             raise NotImplementedError(
                 "no Evaluator for the dataset {} with the type {}".format(
@@ -120,10 +102,10 @@ class Trainer(DefaultTrainer):
     # @classmethod
     # def build_test_loader(cls, cfg, dataset_name):
     #     return build_detection_test_loader(cfg, dataset_name, mapper=DatasetMapper(cfg, False))
-    #
-    # @classmethod
-    # def build_train_loader(cls, cfg):
-    #     return build_detection_train_loader(cfg, mapper=DatasetMapper(cfg, True))
+
+    @classmethod
+    def build_train_loader(cls, cfg):
+        return build_detection_train_loader(cfg)
 
 
 def setup(args):
@@ -131,6 +113,7 @@ def setup(args):
     Create configs and perform basic setups.
     """
     cfg = get_cfg()
+    add_alleria_config(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
     cfg.freeze()

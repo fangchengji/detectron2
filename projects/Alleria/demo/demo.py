@@ -177,5 +177,5 @@ if __name__ == "__main__":
         else:
             cv2.destroyAllWindows()
 
-    with open('submit.csv', 'w') as f:
+    with open('submission.csv', 'w') as f:
         f.writelines(results)
