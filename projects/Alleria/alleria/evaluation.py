@@ -22,6 +22,8 @@ from fvcore.common.file_io import PathManager
 from pycocotools.coco import COCO
 from tabulate import tabulate
 from collections import defaultdict
+from numba import jit
+from tqdm import tqdm
 
 import detectron2.utils.comm as comm
 from detectron2.data import MetadataCatalog
@@ -31,8 +33,6 @@ from detectron2.utils.logger import create_small_table
 
 from detectron2.evaluation.evaluator import DatasetEvaluator
 from detectron2.utils.visualizer import ColorMode, Visualizer
-
-from projects.Alleria.alleria.wheat_eval import WheatEval
 
 
 class WheatEvaluator(DatasetEvaluator):
@@ -92,13 +92,22 @@ class WheatEvaluator(DatasetEvaluator):
 
         # for visualization
         self._visresult = False
-        if self._visresult:
-            self._id2anno = defaultdict(list)
-            for anno in self._coco_api.dataset["annotations"]:
-                ann = copy.deepcopy(anno)
-                ann['bbox_mode'] = BoxMode.XYWH_ABS
-                ann['category_id'] -= 1
-                self._id2anno[ann['image_id']].append(ann)
+        self._id2anno = defaultdict(list)
+        for anno in self._coco_api.dataset["annotations"]:
+            ann = copy.deepcopy(anno)
+            ann['bbox_mode'] = BoxMode.XYWH_ABS
+            ann['category_id'] -= 1
+            self._id2anno[ann['image_id']].append(ann)
+
+        # score thresh
+        if cfg.MODEL.META_ARCHITECTURE == "GeneralizedRCNN":
+            self._score_thresh = cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST
+        elif cfg.MODEL.META_ARCHITECTURE == "OneStageDetector":
+            self._score_thresh = cfg.MODEL.FCOS.INFERENCE_TH_TEST
+        else:
+            self._logger.warning(f"score thresh is not implement for {cfg.MODEL.META_ARCHITECTURE}")
+            self._score_thresh = 0.4
+
 
     def reset(self):
         self._predictions = []
@@ -159,7 +168,20 @@ class WheatEvaluator(DatasetEvaluator):
         self._results = OrderedDict()
 
         if "instances" in predictions[0]:
-            self._eval_predictions(set(self._tasks), predictions)
+            # run coco evaluation
+            # self._eval_predictions(set(self._tasks), predictions)
+
+            self._results['bbox'] = {}
+            # run wheat evaluation
+            # oof_score = calculate_final_score(predictions, self._id2anno, score_threshold=self._score_thresh)
+            # self._results['bbox'].update({"Score": oof_score})
+            # self._logger.info(f"OOF score is {oof_score}")
+
+            # calculate the best threshold
+            metric = calculate_best_threshold(predictions, self._id2anno)
+            # self._logger.info(f"best score is {best_score}, best threshold {best_threshold}")
+            self._results['bbox'].update(metric)
+
         # Copy so the caller can do whatever with results
         return copy.deepcopy(self._results)
 
@@ -330,130 +352,219 @@ def instances_to_coco_json(instances, img_id):
     return results
 
 
-# # inspired from Detectron:
-# # https://github.com/facebookresearch/Detectron/blob/a6a835f5b8208c45d0dce217ce9bbda915f44df7/detectron/datasets/json_dataset_evaluator.py#L255 # noqa
-# def _evaluate_box_proposals(dataset_predictions, coco_api, thresholds=None, area="all", limit=None):
-#     """
-#     Evaluate detection proposal recall metrics. This function is a much
-#     faster alternative to the official COCO API recall evaluation code. However,
-#     it produces slightly different results.
-#     """
-#     # Record max overlap value for each gt box
-#     # Return vector of overlap values
-#     areas = {
-#         "all": 0,
-#         "small": 1,
-#         "medium": 2,
-#         "large": 3,
-#         "96-128": 4,
-#         "128-256": 5,
-#         "256-512": 6,
-#         "512-inf": 7,
-#     }
-#     area_ranges = [
-#         [0 ** 2, 1e5 ** 2],  # all
-#         [0 ** 2, 32 ** 2],  # small
-#         [32 ** 2, 96 ** 2],  # medium
-#         [96 ** 2, 1e5 ** 2],  # large
-#         [96 ** 2, 128 ** 2],  # 96-128
-#         [128 ** 2, 256 ** 2],  # 128-256
-#         [256 ** 2, 512 ** 2],  # 256-512
-#         [512 ** 2, 1e5 ** 2],
-#     ]  # 512-inf
-#     assert area in areas, "Unknown area range: {}".format(area)
-#     area_range = area_ranges[areas[area]]
-#     gt_overlaps = []
-#     num_pos = 0
-#
-#     for prediction_dict in dataset_predictions:
-#         predictions = prediction_dict["proposals"]
-#
-#         # sort predictions in descending order
-#         # TODO maybe remove this and make it explicit in the documentation
-#         inds = predictions.objectness_logits.sort(descending=True)[1]
-#         predictions = predictions[inds]
-#
-#         ann_ids = coco_api.getAnnIds(imgIds=prediction_dict["image_id"])
-#         anno = coco_api.loadAnns(ann_ids)
-#         gt_boxes = [
-#             BoxMode.convert(obj["bbox"], BoxMode.XYWH_ABS, BoxMode.XYXY_ABS)
-#             for obj in anno
-#             if obj["iscrowd"] == 0
-#         ]
-#         gt_boxes = torch.as_tensor(gt_boxes).reshape(-1, 4)  # guard against no boxes
-#         gt_boxes = Boxes(gt_boxes)
-#         gt_areas = torch.as_tensor([obj["area"] for obj in anno if obj["iscrowd"] == 0])
-#
-#         if len(gt_boxes) == 0 or len(predictions) == 0:
-#             continue
-#
-#         valid_gt_inds = (gt_areas >= area_range[0]) & (gt_areas <= area_range[1])
-#         gt_boxes = gt_boxes[valid_gt_inds]
-#
-#         num_pos += len(gt_boxes)
-#
-#         if len(gt_boxes) == 0:
-#             continue
-#
-#         if limit is not None and len(predictions) > limit:
-#             predictions = predictions[:limit]
-#
-#         overlaps = pairwise_iou(predictions.proposal_boxes, gt_boxes)
-#
-#         _gt_overlaps = torch.zeros(len(gt_boxes))
-#         for j in range(min(len(predictions), len(gt_boxes))):
-#             # find which proposal box maximally covers each gt box
-#             # and get the iou amount of coverage for each gt box
-#             max_overlaps, argmax_overlaps = overlaps.max(dim=0)
-#
-#             # find which gt box is 'best' covered (i.e. 'best' = most iou)
-#             gt_ovr, gt_ind = max_overlaps.max(dim=0)
-#             assert gt_ovr >= 0
-#             # find the proposal box that covers the best covered gt box
-#             box_ind = argmax_overlaps[gt_ind]
-#             # record the iou coverage of this gt box
-#             _gt_overlaps[j] = overlaps[box_ind, gt_ind]
-#             assert _gt_overlaps[j] == gt_ovr
-#             # mark the proposal box and the gt box as used
-#             overlaps[box_ind, :] = -1
-#             overlaps[:, gt_ind] = -1
-#
-#         # append recorded iou coverage level
-#         gt_overlaps.append(_gt_overlaps)
-#     gt_overlaps = (
-#         torch.cat(gt_overlaps, dim=0) if len(gt_overlaps) else torch.zeros(0, dtype=torch.float32)
-#     )
-#     gt_overlaps, _ = torch.sort(gt_overlaps)
-#
-#     if thresholds is None:
-#         step = 0.05
-#         thresholds = torch.arange(0.5, 0.95 + 1e-5, step, dtype=torch.float32)
-#     recalls = torch.zeros_like(thresholds)
-#     # compute recall for each iou threshold
-#     for i, t in enumerate(thresholds):
-#         recalls[i] = (gt_overlaps >= t).float().sum() / float(num_pos)
-#     # ar = 2 * np.trapz(recalls, thresholds)
-#     ar = recalls.mean()
-#     return {
-#         "ar": ar,
-#         "recalls": recalls,
-#         "thresholds": thresholds,
-#         "gt_overlaps": gt_overlaps,
-#         "num_pos": num_pos,
-#     }
+"""
+MAP for Kaggle Wheat!!!!
+from https://www.kaggle.com/pestipeti/competition-metric-details-script
+"""
 
 
-def _evaluate_predictions_on_coco(coco_gt, coco_results, iou_type, kpt_oks_sigmas=None):
+@jit(nopython=True)
+def calculate_iou(gt, pr, form='pascal_voc') -> float:
+    """Calculates the Intersection over Union.
+
+    Args:
+        gt: (np.ndarray[Union[int, float]]) coordinates of the ground-truth box
+        pr: (np.ndarray[Union[int, float]]) coordinates of the prdected box
+        form: (str) gt/pred coordinates format
+            - pascal_voc: [xmin, ymin, xmax, ymax]
+            - coco: [xmin, ymin, w, h]
+    Returns:
+        (float) Intersection over union (0.0 <= iou <= 1.0)
     """
-    Evaluate the coco results using COCOEval API.
+    if form == 'coco':
+        gt = gt.copy()
+        pr = pr.copy()
+
+        gt[2] = gt[0] + gt[2]
+        gt[3] = gt[1] + gt[3]
+        pr[2] = pr[0] + pr[2]
+        pr[3] = pr[1] + pr[3]
+
+    # Calculate overlap area
+    dx = min(gt[2], pr[2]) - max(gt[0], pr[0]) + 1
+
+    if dx < 0:
+        return 0.0
+
+    dy = min(gt[3], pr[3]) - max(gt[1], pr[1]) + 1
+
+    if dy < 0:
+        return 0.0
+
+    overlap_area = dx * dy
+
+    # Calculate union area
+    union_area = (
+        (gt[2] - gt[0] + 1) * (gt[3] - gt[1] + 1) +
+        (pr[2] - pr[0] + 1) * (pr[3] - pr[1] + 1) -
+        overlap_area
+    )
+
+    return overlap_area / union_area
+
+
+@jit(nopython=True)
+def find_best_match(gts, pred, pred_idx, threshold=0.5, form='pascal_voc', ious=None) -> int:
+    """Returns the index of the 'best match' between the
+    ground-truth boxes and the prediction. The 'best match'
+    is the highest IoU. (0.0 IoUs are ignored).
+
+    Args:
+        gts: (List[List[Union[int, float]]]) Coordinates of the available ground-truth boxes
+        pred: (List[Union[int, float]]) Coordinates of the predicted box
+        pred_idx: (int) Index of the current predicted box
+        threshold: (float) Threshold
+        form: (str) Format of the coordinates
+        ious: (np.ndarray) len(gts) x len(preds) matrix for storing calculated ious.
+
+    Return:
+        (int) Index of the best match GT box (-1 if no match above threshold)
     """
-    assert len(coco_results) > 0
+    best_match_iou = -np.inf
+    best_match_idx = -1
 
-    coco_dt = coco_gt.loadRes(coco_results)
-    coco_eval = WheatEval(coco_gt, coco_dt, iou_type)
+    for gt_idx in range(len(gts)):
 
-    coco_eval.evaluate()
-    coco_eval.accumulate()
-    coco_eval.summarize()
+        if gts[gt_idx][0] < 0:
+            # Already matched GT-box
+            continue
 
-    return coco_eval
+        iou = -1 if ious is None else ious[gt_idx][pred_idx]
+
+        if iou < 0:
+            iou = calculate_iou(gts[gt_idx], pred, form=form)
+
+            if ious is not None:
+                ious[gt_idx][pred_idx] = iou
+
+        if iou < threshold:
+            continue
+
+        if iou > best_match_iou:
+            best_match_iou = iou
+            best_match_idx = gt_idx
+
+    return best_match_idx
+
+
+@jit(nopython=True)
+def calculate_precision(gts, preds, threshold=0.5, form='coco', ious=None) -> float:
+    """Calculates precision for GT - prediction pairs at one threshold.
+
+    Args:
+        gts: (List[List[Union[int, float]]]) Coordinates of the available ground-truth boxes
+        preds: (List[List[Union[int, float]]]) Coordinates of the predicted boxes,
+               sorted by confidence value (descending)
+        threshold: (float) Threshold
+        form: (str) Format of the coordinates
+        ious: (np.ndarray) len(gts) x len(preds) matrix for storing calculated ious.
+
+    Return:
+        (float) Precision
+    """
+    n = len(preds)
+    tp = 0
+    fp = 0
+
+    # for pred_idx, pred in enumerate(preds_sorted):
+    for pred_idx in range(n):
+
+        best_match_gt_idx = find_best_match(gts, preds[pred_idx], pred_idx,
+                                            threshold=threshold, form=form, ious=ious)
+
+        if best_match_gt_idx >= 0:
+            # True positive: The predicted box matches a gt box with an IoU above the threshold.
+            tp += 1
+            # Remove the matched GT box
+            gts[best_match_gt_idx] = -1
+
+        else:
+            # No match
+            # False positive: indicates a predicted box had no associated gt box.
+            fp += 1
+
+    # False negative: indicates a gt box had no associated predicted box.
+    fn = (gts.sum(axis=1) > 0).sum()
+
+    return tp / (tp + fp + fn)
+
+
+@jit(nopython=True)
+def calculate_image_precision(gts, preds, thresholds=(0.5,), form='coco') -> float:
+    """Calculates image precision.
+
+    Args:
+        gts: (List[List[Union[int, float]]]) Coordinates of the available ground-truth boxes
+        preds: (List[List[Union[int, float]]]) Coordinates of the predicted boxes,
+               sorted by confidence value (descending)
+        thresholds: (float) Different thresholds
+        form: (str) Format of the coordinates
+
+    Return:
+        (float) Precision
+    """
+    n_threshold = len(thresholds)
+    image_precision = 0.0
+
+    ious = np.ones((len(gts), len(preds))) * -1
+    # ious = None
+
+    for threshold in thresholds:
+        precision_at_threshold = calculate_precision(gts.copy(), preds, threshold=threshold,
+                                                     form=form, ious=ious)
+        image_precision += precision_at_threshold / n_threshold
+
+    return image_precision
+
+
+def calculate_final_score(all_predictions, gts, score_threshold):
+    final_scores = []
+    iou_thresholds = np.array([x for x in np.arange(0.5, 0.76, 0.05)])
+    for i in range(len(all_predictions)):
+        image_id = all_predictions[i]["image_id"]
+        pred_instances = all_predictions[i]["instances"].copy()
+        scores = []
+        bboxes = []
+        for inst in pred_instances:
+            scores.append(inst["score"])
+            bboxes.append(inst["bbox"])
+
+        gt_bboxes = []
+        for gt in gts[image_id]:
+            gt_bboxes.append(gt['bbox'])
+
+        # gt_boxes = all_predictions[i]['gt_boxes'].copy()
+        # pred_boxes = all_predictions[i]['pred_boxes'].copy()
+        # scores = all_predictions[i]['scores'].copy()
+        # image_id = all_predictions[i]['image_id']
+
+        scores = np.array(scores)
+        pred_boxes = np.array(bboxes)
+        gt_bboxes = np.array(gt_bboxes)
+
+        indexes = np.where(scores > score_threshold)
+        pred_boxes = pred_boxes[indexes]
+        scores = scores[indexes]
+
+        image_precision = calculate_image_precision(gt_bboxes, pred_boxes, thresholds=iou_thresholds, form='coco')
+        final_scores.append(image_precision)
+
+    return np.mean(final_scores)
+
+
+def calculate_best_threshold(all_predictions, gts):
+    metric = {}
+    best_final_score, best_score_threshold = 0, 0
+    count = 0
+    for score_threshold in tqdm(np.arange(0.2, 0.8, 0.01), total=np.arange(0.2, 0.8, 0.01).shape[0]):
+        final_score = calculate_final_score(all_predictions, gts, score_threshold)
+        if final_score > best_final_score:
+            best_final_score = final_score
+            best_score_threshold = score_threshold
+        if count % 5 == 0:
+            metric[f"th@{score_threshold:.2f}"] = final_score
+        count += 1
+
+    metric["best_th"] = best_score_threshold
+    metric["best_score"] = best_final_score
+    return metric

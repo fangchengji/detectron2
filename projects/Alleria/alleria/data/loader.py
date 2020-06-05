@@ -125,7 +125,36 @@ if __name__=="__main__":
     from datasets import register_all_datasets
     import os
 
+    def instances_to_json(instances):
+        num_instance = len(instances)
+        if num_instance == 0:
+            return []
+
+        boxes = instances.gt_boxes.tensor.numpy()
+        if boxes.shape[1] == 4:
+            boxes = BoxMode.convert(boxes, BoxMode.XYXY_ABS, BoxMode.XYWH_ABS)
+        boxes = boxes.tolist()
+        # scores = instances.scores.tolist()
+        classes = instances.gt_classes.tolist()
+
+        results = []
+        for k in range(num_instance):
+            result = {
+                "category_id": classes[k],
+                "bbox": boxes[k],
+                "bbox_mode": BoxMode.XYWH_ABS,
+            }
+
+            results.append(result)
+        return results
+
     cfg = get_cfg()
+    cfg.DATALOADER.MOSAIC_AUGMENTATION = 0.0
+    # mix-up augmentation
+    cfg.DATALOADER.MIXUP_AUGMENTATION = 0.0
+    # hsv augmentation
+    cfg.DATALOADER.HSV_AUGMENTATION = 0.0
+
     cfg.merge_from_file(config_file)
     cfg.freeze()
     default_setup(cfg, "")
@@ -138,10 +167,13 @@ if __name__=="__main__":
     data_iter = iter(data_loader)
     for idx in range(10):
         batches = next(data_iter)
-        for image, data_dict in batches:
+        images = [x["image"].numpy().transpose(1, 2, 0) for x in batches]
+        file_names = [x["file_name"] for x in batches]
+        annos = [{"annotations" : instances_to_json(x["instances"])} for x in batches]
+        for image, file_name, anno in zip(images, file_names, annos):
             visualizer = Visualizer(image, metadata=meta)
-            vis = visualizer.draw_dataset_dict(data_dict)
-            fpath = os.path.join(dirname, os.path.basename(data_dict["file_name"]))
+            vis = visualizer.draw_dataset_dict(anno)
+            fpath = os.path.join(dirname, os.path.basename(file_name))
             vis.save(fpath)
 
 

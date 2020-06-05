@@ -16,7 +16,7 @@ from detectron2.data import transforms as T
 from detectron2.structures.boxes import BoxMode
 from detectron2.data.dataset_mapper import DatasetMapper
 
-from .augmentation import random_affine, augment_hsv
+from .augmentation import random_affine, augment_hsv, get_albumentations_train_transforms
 
 
 class PlusDatasetMapper:
@@ -35,6 +35,7 @@ class PlusDatasetMapper:
     2. aPPLIES CROPPING/GEOMETRIC TRANSFORMS TO THE IMAGE AND ANNOTATIONS
     3. pREPARE DATA AND ANNOTATIONS TO tENSOR AND :CLASS:`iNSTANCES`
     """
+
     def __init__(self, cfg, dataset, is_train=True):
         if cfg.INPUT.CROP.ENABLED and is_train:
             self.crop_gen = T.RandomCrop(cfg.INPUT.CROP.TYPE, cfg.INPUT.CROP.SIZE)
@@ -43,6 +44,9 @@ class PlusDatasetMapper:
             self.crop_gen = None
 
         self.tfm_gens = self.build_transform_gen(cfg, is_train)
+
+        # albumentations_tfm
+        self._albumentations_tfm = get_albumentations_train_transforms()
 
         # fmt: off
         self.img_format = cfg.INPUT.FORMAT
@@ -65,9 +69,8 @@ class PlusDatasetMapper:
         self._dataset = dataset
 
         # for multi image augmentation
-        self.mosaic_prob = cfg.DATALOADER.MOSAIC_AUGMENTATION
-        self.mixup_prob = cfg.DATALOADER.MIXUP_AUGMENTATION
-        self.hsv_prob = cfg.DATALOADER.HSV_AUGMENTATION
+        self.mosaic_prob = cfg.DATALOADER.MOSAIC_PROB
+        self.mixup_prob = cfg.DATALOADER.MIXUP_PROB
 
     def build_transform_gen(self, cfg, is_train):
         """
@@ -94,11 +97,11 @@ class PlusDatasetMapper:
         tfm_gens = []
         tfm_gens.append(T.ResizeShortestEdge(min_size, max_size, sample_style))
         if is_train:
-            tfm_gens.append(T.RandomFlip(prob=0.5, horizontal=True, vertical=False))
-            tfm_gens.append(T.RandomFlip(prob=0.5, horizontal=False, vertical=True))
+            # tfm_gens.append(T.RandomFlip(prob=0.5, horizontal=True, vertical=False))
+            # tfm_gens.append(T.RandomFlip(prob=0.5, horizontal=False, vertical=True))
             # TODO: add more augmentation
-            tfm_gens.append(T.RandomApply(T.RandomBrightness(0.8, 1.2), 0.5))   # 0.8 ~ 1.2 is the default value of albumentations
-            tfm_gens.append(T.RandomApply(T.RandomContrast(0.8, 1.2), 0.5))
+            # tfm_gens.append(T.RandomApply(T.RandomBrightness(0.8, 1.2), 0.5))
+            # tfm_gens.append(T.RandomApply(T.RandomContrast(0.8, 1.2), 0.5))
 
             logger.info("TransformGens used in training: " + str(tfm_gens))
         return tfm_gens
@@ -113,15 +116,46 @@ class PlusDatasetMapper:
         """
         dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
         # USER: Write your own image loading if it's not from a file
-        if rand_range() < self.mosaic_prob:
+        prob = rand_range()
+        if prob < self.mixup_prob[1] and prob >= self.mixup_prob[0]:
+            image, dataset_dict = self.load_mixup(dataset_dict)
+        elif prob < self.mosaic_prob[1] and prob >= self.mosaic_prob[0]:
             image, dataset_dict = self.load_mosaic(dataset_dict)
         else:
             image = self.load_image(dataset_dict)
 
         # augment form yolov4
-        if rand_range() < self.hsv_prob:
-            image = augment_hsv(image, hgain=0.0138, sgain=0.678, vgain=0.36)
+        # if rand_range() < self.hsv_prob:
+        #    image = augment_hsv(image, hgain=0.0138, sgain=0.678, vgain=0.36)
 
+        # apply albumentations transform
+        augment_anno = {
+            "image": image,
+            "bboxes": [],
+            "category_id": []
+        }
+        if "annotations" in dataset_dict:
+            augment_anno["bboxes"] = [x['bbox'] for x in dataset_dict["annotations"]]
+            augment_anno["category_id"] = [x['category_id'] for x in dataset_dict["annotations"]]
+        # do augmentation
+        augment_anno = self._albumentations_tfm(**augment_anno)
+
+        image = augment_anno["image"]
+        if len(augment_anno["bboxes"]) > 0:
+            dataset_dict["annotations"] = [
+                {
+                    "category_id": category_id,
+                    "bbox": bbox,
+                    "iscrowd": 0,
+                    "area": bbox[2] * bbox[3],
+                    "bbox_mode": BoxMode.XYWH_ABS,
+                }
+                for bbox, category_id in zip(augment_anno["bboxes"], augment_anno["category_id"])
+            ]
+        else:
+            dataset_dict.pop("annotations")
+
+        # apply detectron2 transform
         if "annotations" not in dataset_dict:
             image, transforms = T.apply_transform_gens(
                 ([self.crop_gen] if self.crop_gen else []) + self.tfm_gens, image
@@ -136,6 +170,7 @@ class PlusDatasetMapper:
                     np.random.choice(dataset_dict["annotations"]),
                 )
                 image = crop_tfm.apply_image(image)
+            # only transform image
             image, transforms = T.apply_transform_gens(self.tfm_gens, image)
             if self.crop_gen:
                 transforms = crop_tfm + transforms
@@ -168,6 +203,7 @@ class PlusDatasetMapper:
                     anno.pop("keypoints", None)
 
             # USER: Implement additional transformations if you have other types of data
+            # transform only annotations, because the image has transformed before
             annos = [
                 utils.transform_instance_annotations(
                     obj, transforms, image_shape, keypoint_hflip_indices=self.keypoint_hflip_indices
@@ -200,10 +236,7 @@ class PlusDatasetMapper:
 
     def load_mosaic(self, data_dict):
         """
-        only support bbox now
-        Args:
-            data_dict:
-        Returns:
+            from https://github.com/ultralytics/yolov3
         """
         # loads images in a mosaic
         data_dicts = [data_dict]
@@ -220,9 +253,10 @@ class PlusDatasetMapper:
             else:
                 labels.append(np.array([]))
             w, h = min(w, data_dict["width"]), min(h, data_dict["height"])
-        xc, yc = int(random.uniform(w * 0.5, w * 1.5)), int(random.uniform(h * 0.5, h * 1.5))   # mosaic center x, y
 
-        mosaic_img = np.full((h * 2, w * 2, images[0].shape[2]), 114, dtype=np.uint8)  # base image with 4 tiles
+        xc, yc = int(random.uniform(w * 0.25, w * 0.75)), int(random.uniform(h * 0.25, h * 0.75))  # mosaic center x, y
+
+        mosaic_img = np.full((h, w, images[0].shape[2]), 0, dtype=np.uint8)  # base image with 4 tiles
         mosaic_labels = []
         for i, (image, data_dict) in enumerate(zip(images, data_dicts)):
             wi, hi = data_dict['width'], data_dict['height']
@@ -232,13 +266,13 @@ class PlusDatasetMapper:
                 x1a, y1a, x2a, y2a = max(xc - wi, 0), max(yc - hi, 0), xc, yc  # xmin, ymin, xmax, ymax (large image)
                 x1b, y1b, x2b, y2b = wi - (x2a - x1a), hi - (y2a - y1a), wi, hi  # xmin, ymin, xmax, ymax (small image)
             elif i == 1:  # top right
-                x1a, y1a, x2a, y2a = xc, max(yc - hi, 0), min(xc + wi, w * 2), yc
+                x1a, y1a, x2a, y2a = xc, max(yc - hi, 0), min(xc + wi, w), yc
                 x1b, y1b, x2b, y2b = 0, hi - (y2a - y1a), min(wi, x2a - x1a), hi
             elif i == 2:  # bottom left
-                x1a, y1a, x2a, y2a = max(xc - wi, 0), yc, xc, min(h * 2, yc + hi)
+                x1a, y1a, x2a, y2a = max(xc - wi, 0), yc, xc, min(h, yc + hi)
                 x1b, y1b, x2b, y2b = wi - (x2a - x1a), 0, max(xc, wi), min(y2a - y1a, hi)
             elif i == 3:  # bottom right
-                x1a, y1a, x2a, y2a = xc, yc, min(xc + wi, w * 2), min(h * 2, yc + hi)
+                x1a, y1a, x2a, y2a = xc, yc, min(xc + wi, w), min(h, yc + hi)
                 x1b, y1b, x2b, y2b = 0, 0, min(wi, x2a - x1a), min(y2a - y1a, hi)
 
             mosaic_img[y1a:y2a, x1a:x2a] = image[y1b:y2b, x1b:x2b]  # img4[ymin:ymax, xmin:xmax]
@@ -255,53 +289,34 @@ class PlusDatasetMapper:
                 labels_i[:, 4] = labels_i[:, 2] + labels_i[:, 4]
                 mosaic_labels.append(labels_i)
 
-            # if "annotations" in data_dict:
-            #     labels = copy.deepcopy(data_dict["annotations"])
-            #     for obj in labels:  # in coco x0,y0,w,h mode
-            #         obj['bbox'][0] += padw
-            #         obj['bbox'][1] += padh
-            #         # clip
-            #         np.clip(obj['bbox'][0], 0, 2 * w - 1, out=obj['bbox'][0])
-            #         np.clip(obj['bbox'][1], 0, 2 * h - 1, out=obj['bbox'][1])
-            #         np.clip(obj['bbox'][2], 0, 2 * w - 1 - obj['bbox'][0], out=obj['bbox'][2])
-            #         np.clip(obj['bbox'][3], 0, 2 * h - 1 - obj['bbox'][1], out=obj['bbox'][3])
-            #         # filter the very small bbox
-            #         if obj['bbox'][2] < 8 or obj['bbox'][3] < 8:
-            #             continue
-            #         annotations.append(obj)
-
         # Concat/clip labels
         if len(mosaic_labels):
             mosaic_labels = np.concatenate(mosaic_labels, 0)
-            # np.clip(labels4[:, 1:] - s / 2, 0, s, out=labels4[:, 1:])  # use with center crop
-            np.clip(mosaic_labels[:, [1, 3]], 0, 2 * w, out=mosaic_labels[:, [1, 3]])  # use with random_affine
-            np.clip(mosaic_labels[:, [2, 4]], 0, 2 * h, out=mosaic_labels[:, [2, 4]])  # use with random_affine
-
-        # Augment
-        # img4 = img4[s // 2: int(s * 1.5), s // 2:int(s * 1.5)]  # center crop (WARNING, requires box pruning)
-        mosaic_img, mosaic_labels = random_affine(
-            mosaic_img,
-            mosaic_labels,
-            degrees=1.98 * 2,
-            translate=0.05 * 2,
-            scale=0.05 * 2,
-            shear=0.641 * 2,
-            border=(-h // 2, -w // 2)
-        )  # border to remove
+            np.clip(mosaic_labels[:, 1], 0, w, out=mosaic_labels[:, 1])
+            np.clip(mosaic_labels[:, 3], 0, w, out=mosaic_labels[:, 3])
+            np.clip(mosaic_labels[:, 2], 0, h, out=mosaic_labels[:, 2])
+            np.clip(mosaic_labels[:, 4], 0, h, out=mosaic_labels[:, 4])
+            mosaic_labels.astype(np.int32)
+            mosaic_labels = mosaic_labels[
+                np.where(
+                    (mosaic_labels[:, 3] - mosaic_labels[:, 1]) * (mosaic_labels[:, 4] - mosaic_labels[:, 2]) > 0
+                )
+            ]
 
         # translate back to detectron2 format
         annos = []
         for i in range(mosaic_labels.shape[0]):
+            bbox = [mosaic_labels[i, 1], mosaic_labels[i, 2],
+                    max(mosaic_labels[i, 3] - mosaic_labels[i, 1], 0),
+                    max(mosaic_labels[i, 4] - mosaic_labels[i, 2], 0)]
             anno = {
                 'iscrowd': 0,
                 # xyxy to xywh
-                'bbox': [mosaic_labels[i, 1],
-                         mosaic_labels[i, 2],
-                         max(mosaic_labels[i, 3] - mosaic_labels[i, 1], 0),
-                         max(mosaic_labels[i, 4] - mosaic_labels[i, 2], 0)],
+                'bbox': bbox,
                 'category_id': int(mosaic_labels[i, 0]),
-                'bbox_mode': BoxMode(1)   # xywh
-                }
+                'bbox_mode': BoxMode(1),  # xywh
+                'area': bbox[2] * bbox[3],
+            }
             annos.append(anno)
 
         data_dict = {
@@ -313,6 +328,29 @@ class PlusDatasetMapper:
         }
 
         return mosaic_img, data_dict
+
+    def load_mixup(self, data_dict):
+        # loads images in a mosaic
+        data_dicts = [data_dict]
+        data_dicts.extend([copy.deepcopy(self._dataset[random.randint(0, len(self._dataset) - 1)]) for _ in range(1)])
+        images = []
+        annos = []
+        for data_dict in data_dicts:
+            images.append(self.load_image(data_dict))
+            if "annotations" in data_dict:
+                annos.extend(data_dict["annotations"].copy())
+
+        mixup_image = ((images[0].astype(np.float32) + images[1].astype(np.float32)) / 2).astype(np.uint8)
+
+        data_dict = {
+            "file_name": data_dicts[0]['file_name'],
+            "height": data_dicts[0]['width'],
+            "width": data_dicts[0]['height'],
+            "image_id": data_dicts[0]['image_id'],
+            "annotations": annos
+        }
+
+        return mixup_image, data_dict
 
 
 def rand_range(low=1.0, high=None, size=None):

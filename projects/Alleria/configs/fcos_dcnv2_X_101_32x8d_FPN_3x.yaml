@@ -3,6 +3,7 @@ MODEL:
 #  WEIGHTS: "detectron2://ImageNetPretrained/FAIR/X-101-32x8d.pkl"
   WEIGHTS: "output/fcos_dcnv2_x101_fpn_3x/model_final.pth"
 #  WEIGHTS: "output/FCOS_MS_X_101_32x8d_dcnv2_2x.pth"
+#  WEIGHTS: "output/fcos_dcnv2_x101_fpn_3x_1024_FVBCMOHSV/model_final.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   PIXEL_STD: [57.375, 57.120, 58.395]

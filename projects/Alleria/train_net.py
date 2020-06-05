@@ -32,6 +32,7 @@ from detectron2.evaluation import (
     verify_results,
 )
 from detectron2.modeling import GeneralizedRCNNWithTTA
+from detectron2.utils.logger import setup_logger
 
 from alleria.data.loader import build_detection_train_loader
 from alleria.evaluation import WheatEvaluator
@@ -118,6 +119,9 @@ def setup(args):
     cfg.merge_from_list(args.opts)
     cfg.freeze()
     default_setup(cfg, args)
+    # Setup logger for "alleria" module
+    setup_logger(output=cfg.OUTPUT_DIR, distributed_rank=comm.get_rank(),
+                 name="alleria", abbrev_name="alleria")
     return cfg
 
 

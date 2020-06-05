@@ -13,9 +13,7 @@ def add_alleria_config(cfg):
     # Data Augmentation
     # ---------------------------------------------------------------------------- #
     # mosaic augmentation
-    _C.DATALOADER.MOSAIC_AUGMENTATION = 0.0
+    _C.DATALOADER.MOSAIC_PROB = (0.1, 0.2)
     # mix-up augmentation
-    _C.DATALOADER.MIXUP_AUGMENTATION = 0.0
-    # hsv augmentation
-    _C.DATALOADER.HSV_AUGMENTATION = 0.0
+    _C.DATALOADER.MIXUP_PROB = (0.0, 0.1)
 
