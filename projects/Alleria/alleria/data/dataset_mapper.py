@@ -153,7 +153,7 @@ class PlusDatasetMapper:
                 for bbox, category_id in zip(augment_anno["bboxes"], augment_anno["category_id"])
             ]
         else:
-            dataset_dict.pop("annotations")
+            dataset_dict["annotations"] = []
 
         # apply detectron2 transform
         if "annotations" not in dataset_dict:
