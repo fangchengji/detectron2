@@ -16,7 +16,7 @@ from detectron2.data import transforms as T
 from detectron2.structures.boxes import BoxMode
 from detectron2.data.dataset_mapper import DatasetMapper
 
-from .augmentation import random_affine, augment_hsv, get_albumentations_train_transforms
+from .augmentation import get_albumentations_train_transforms, get_albumentations_test_transforms
 
 
 class PlusDatasetMapper:
@@ -46,7 +46,10 @@ class PlusDatasetMapper:
         self.tfm_gens = self.build_transform_gen(cfg, is_train)
 
         # albumentations_tfm
-        self._albumentations_tfm = get_albumentations_train_transforms()
+        if is_train:
+            self._albumentations_tfm = get_albumentations_train_transforms()
+        else:
+            self._albumentations_tfm = get_albumentations_test_transforms()
 
         # fmt: off
         self.img_format = cfg.INPUT.FORMAT
@@ -117,18 +120,19 @@ class PlusDatasetMapper:
         dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
         # USER: Write your own image loading if it's not from a file
         prob = rand_range()
-        if prob < self.mixup_prob[1] and prob >= self.mixup_prob[0]:
-            image, dataset_dict = self.load_mixup(dataset_dict)
-        elif prob < self.mosaic_prob[1] and prob >= self.mosaic_prob[0]:
-            image, dataset_dict = self.load_mosaic(dataset_dict)
-        else:
+        if self.is_train:
+            if prob < self.mixup_prob[1] and prob >= self.mixup_prob[0]:
+                image, dataset_dict = self.load_mixup(dataset_dict)
+            elif prob < self.mosaic_prob[1] and prob >= self.mosaic_prob[0]:
+                image, dataset_dict = self.load_mosaic(dataset_dict)
+            else:
+                image = self.load_image(dataset_dict)
+        else:   # test
             image = self.load_image(dataset_dict)
 
-        # augment form yolov4
-        # if rand_range() < self.hsv_prob:
-        #    image = augment_hsv(image, hgain=0.0138, sgain=0.678, vgain=0.36)
-
         # apply albumentations transform
+        if self.img_format == "BGR":
+            image = image[..., ::-1]    # albumentations use rgb image as input
         augment_anno = {
             "image": image,
             "bboxes": [],
@@ -141,6 +145,8 @@ class PlusDatasetMapper:
         augment_anno = self._albumentations_tfm(**augment_anno)
 
         image = augment_anno["image"]
+        if self.img_format == "BGR":
+            image = image[..., ::-1]    # translate back to bgr
         if len(augment_anno["bboxes"]) > 0:
             dataset_dict["annotations"] = [
                 {
@@ -188,11 +194,11 @@ class PlusDatasetMapper:
                 dataset_dict, image_shape, transforms, self.min_box_side_len, self.proposal_topk
             )
 
-        if not self.is_train:
-            # USER: Modify this if you want to keep them for some reason.
-            dataset_dict.pop("annotations", None)
-            dataset_dict.pop("sem_seg_file_name", None)
-            return dataset_dict
+        # if not self.is_train:
+        #     # USER: Modify this if you want to keep them for some reason.
+        #     dataset_dict.pop("annotations", None)
+        #     dataset_dict.pop("sem_seg_file_name", None)
+        #     return dataset_dict
 
         if "annotations" in dataset_dict:
             # USER: Modify this if you want to keep them for some reason.
@@ -219,14 +225,6 @@ class PlusDatasetMapper:
                 instances.gt_boxes = instances.gt_masks.get_bounding_boxes()
             dataset_dict["instances"] = utils.filter_empty_instances(instances)
 
-        # USER: Remove if you don't do semantic/panoptic segmentation.
-        if "sem_seg_file_name" in dataset_dict:
-            with PathManager.open(dataset_dict.pop("sem_seg_file_name"), "rb") as f:
-                sem_seg_gt = Image.open(f)
-                sem_seg_gt = np.asarray(sem_seg_gt, dtype="uint8")
-            sem_seg_gt = transforms.apply_segmentation(sem_seg_gt)
-            sem_seg_gt = torch.as_tensor(sem_seg_gt.astype("long"))
-            dataset_dict["sem_seg"] = sem_seg_gt
         return dataset_dict
 
     def load_image(self, dataset_dict):
@@ -256,7 +254,7 @@ class PlusDatasetMapper:
 
         xc, yc = int(random.uniform(w * 0.25, w * 0.75)), int(random.uniform(h * 0.25, h * 0.75))  # mosaic center x, y
 
-        mosaic_img = np.full((h, w, images[0].shape[2]), 0, dtype=np.uint8)  # base image with 4 tiles
+        mosaic_img = np.full((h, w, 3), (103, 116, 123), dtype=np.uint8)  # base image with 4 tiles, BGR order
         mosaic_labels = []
         for i, (image, data_dict) in enumerate(zip(images, data_dicts)):
             wi, hi = data_dict['width'], data_dict['height']

@@ -3,11 +3,6 @@
 # @Author  : fangcheng.ji
 # @FileName: evaluation.py
 
-
-# class AlleriaEvaluator(COCOEvaluator):
-
-
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import contextlib
 import copy
 import io
@@ -28,10 +23,11 @@ from tqdm import tqdm
 import detectron2.utils.comm as comm
 from detectron2.data import MetadataCatalog
 from detectron2.data.datasets.coco import convert_to_coco_json
-from detectron2.structures import BoxMode
+from detectron2.structures import BoxMode, Instances
 from detectron2.utils.logger import create_small_table
 
 from detectron2.evaluation.evaluator import DatasetEvaluator
+from detectron2.evaluation.coco_evaluation import _evaluate_predictions_on_coco
 from detectron2.utils.visualizer import ColorMode, Visualizer
 
 
@@ -108,9 +104,9 @@ class WheatEvaluator(DatasetEvaluator):
             self._logger.warning(f"score thresh is not implement for {cfg.MODEL.META_ARCHITECTURE}")
             self._score_thresh = 0.4
 
-
     def reset(self):
         self._predictions = []
+        self._TTA_gts = []
 
     def _tasks_from_config(self, cfg):
         """
@@ -142,6 +138,21 @@ class WheatEvaluator(DatasetEvaluator):
                 if self._visresult:
                     self._vis_result(input["image_id"], input["file_name"], instances)
 
+            # TODO: deal with the gt in inputs after augmentation
+            if "instances" in input:
+                instances = input["instances"].to(self._cpu_device)
+                coco_instances = aug_gt_instances_to_coco_json(
+                    instances, input["image_id"], input["height"], input["width"]
+                )
+                aug_gt = {
+                    "image_id": input["image_id"],
+                    "file_name": os.path.basename(input["file_name"]),
+                    "height": input["height"],
+                    "width": input["width"],
+                    "instances": coco_instances,
+                }
+                self._TTA_gts.append(aug_gt)
+
             self._predictions.append(prediction)
 
     def evaluate(self):
@@ -150,10 +161,14 @@ class WheatEvaluator(DatasetEvaluator):
             predictions = comm.gather(self._predictions, dst=0)
             predictions = list(itertools.chain(*predictions))
 
+            aug_gts = comm.gather(self._TTA_gts, dst=0)
+            aug_gts = list(itertools.chain(*aug_gts))
+
             if not comm.is_main_process():
                 return {}
         else:
             predictions = self._predictions
+            aug_gts = self._TTA_gts
 
         if len(predictions) == 0:
             self._logger.warning("[COCOEvaluator] Did not receive valid predictions.")
@@ -165,13 +180,30 @@ class WheatEvaluator(DatasetEvaluator):
             with PathManager.open(file_path, "wb") as f:
                 torch.save(predictions, f)
 
+        # aug_gts > 0 means use the aug label
+        if len(aug_gts) > 0:
+            tta_json_file = os.path.join(self._output_dir, "tta_dataset.json")
+            aug_gt_convert_to_coco_json(aug_gts, output_file=tta_json_file)
+
+            # update dataset
+            with contextlib.redirect_stdout(io.StringIO()):
+                self._coco_api = COCO(tta_json_file)
+
+            self._id2anno.clear()
+            for anno in self._coco_api.dataset["annotations"]:
+                ann = copy.deepcopy(anno)
+                ann['bbox_mode'] = BoxMode.XYWH_ABS
+                ann['category_id'] -= 1
+                self._id2anno[ann['image_id']].append(ann)
+
+        # run evaluation
         self._results = OrderedDict()
 
         if "instances" in predictions[0]:
             # run coco evaluation
-            # self._eval_predictions(set(self._tasks), predictions)
+            self._eval_predictions(set(self._tasks), predictions)
 
-            self._results['bbox'] = {}
+            # self._results['bbox'] = {}
             # run wheat evaluation
             # oof_score = calculate_final_score(predictions, self._id2anno, score_threshold=self._score_thresh)
             # self._results['bbox'].update({"Score": oof_score})
@@ -180,6 +212,8 @@ class WheatEvaluator(DatasetEvaluator):
             # calculate the best threshold
             metric = calculate_best_threshold(predictions, self._id2anno)
             # self._logger.info(f"best score is {best_score}, best threshold {best_threshold}")
+            if 'bbox' not in self._results:
+                self._results['bbox'] = {}
             self._results['bbox'].update(metric)
 
         # Copy so the caller can do whatever with results
@@ -352,6 +386,78 @@ def instances_to_coco_json(instances, img_id):
     return results
 
 
+def aug_gt_instances_to_coco_json(instances, img_id, output_height, output_width):
+    num_instance = len(instances)
+    if num_instance == 0:
+        return []
+
+    # 1. scale box to output size
+    img_size = instances.image_size   # h, w
+    scale_x, scale_y = (output_width / img_size[1], output_height / img_size[0])
+    results = Instances((output_height, output_width), **instances.get_fields())
+
+    output_boxes = instances.gt_boxes
+    output_boxes.scale(scale_x, scale_y)    # xyxy
+    output_boxes.clip(results.image_size)
+
+    instances = results[output_boxes.nonempty()]
+
+    # 2. convert to coco
+    boxes = instances.gt_boxes.tensor.numpy()
+    boxes = BoxMode.convert(boxes, BoxMode.XYXY_ABS, BoxMode.XYWH_ABS)
+    boxes = boxes.tolist()
+    classes = instances.gt_classes.tolist()
+
+    results = []
+    for k in range(num_instance):
+        result = {
+            "image_id": img_id,
+            "category_id": classes[k] + 1,
+            "bbox": boxes[k],
+            "area": boxes[k][2] * boxes[k][3],
+            "iscrowd": 0,
+        }
+        results.append(result)
+    return results
+
+
+def aug_gt_convert_to_coco_json(aug_gts, output_file):
+    dataset = {
+        "info": {},
+        "licenses": [],
+        "images": [],
+        "annotations": [],
+        "categories": [],
+    }
+    dataset['categories'].append({
+        'id': 1,
+        'name': "wheat",
+        'supercategory': "wheat",
+        'skeleton': []
+    })
+
+    box_id = 0
+    for gt in aug_gts:
+        dataset['images'].append({
+            'coco_url': '',
+            'date_captured': '',
+            'file_name': gt['file_name'],
+            'flickr_url': '',
+            'id': gt['image_id'],
+            'license': 0,
+            'width': gt['width'],
+            'height': gt['height'],
+        })
+        for anno in gt['instances']:
+            anno['id'] = box_id
+            dataset['annotations'].append(anno)
+            box_id += 1
+
+    # logger.info(f"Writing COCO format annotations at '{output_file}' ...")
+    with PathManager.open(output_file, "w") as f:
+        json.dump(dataset, f)
+
+
 """
 MAP for Kaggle Wheat!!!!
 from https://www.kaggle.com/pestipeti/competition-metric-details-script
@@ -468,7 +574,6 @@ def calculate_precision(gts, preds, threshold=0.5, form='coco', ious=None) -> fl
 
     # for pred_idx, pred in enumerate(preds_sorted):
     for pred_idx in range(n):
-
         best_match_gt_idx = find_best_match(gts, preds[pred_idx], pred_idx,
                                             threshold=threshold, form=form, ious=ious)
 
@@ -510,8 +615,9 @@ def calculate_image_precision(gts, preds, thresholds=(0.5,), form='coco') -> flo
     # ious = None
 
     for threshold in thresholds:
-        precision_at_threshold = calculate_precision(gts.copy(), preds, threshold=threshold,
-                                                     form=form, ious=ious)
+        if len(gts) > 0:
+            precision_at_threshold = calculate_precision(gts.copy(), preds, threshold=threshold,
+                                                         form=form, ious=ious)
         image_precision += precision_at_threshold / n_threshold
 
     return image_precision
@@ -539,14 +645,23 @@ def calculate_final_score(all_predictions, gts, score_threshold):
         # image_id = all_predictions[i]['image_id']
 
         scores = np.array(scores)
-        pred_boxes = np.array(bboxes)
-        gt_bboxes = np.array(gt_bboxes)
+        pred_boxes = np.array(bboxes, dtype=np.int)
+        preds_sorted_idx = np.argsort(scores)[::-1]
+        pred_boxes = pred_boxes[preds_sorted_idx]
+
+        gt_bboxes = np.array(gt_bboxes, dtype=np.int)
 
         indexes = np.where(scores > score_threshold)
         pred_boxes = pred_boxes[indexes]
         scores = scores[indexes]
 
-        image_precision = calculate_image_precision(gt_bboxes, pred_boxes, thresholds=iou_thresholds, form='coco')
+        if len(gt_bboxes) == 0 and len(pred_boxes) == 0:
+            image_precision = 1.0
+        elif len(gt_bboxes) == 0 or len(pred_boxes) == 0:
+            image_precision = 0.0
+        else:
+            image_precision = calculate_image_precision(gt_bboxes, pred_boxes, thresholds=iou_thresholds, form='coco')
+
         final_scores.append(image_precision)
 
     return np.mean(final_scores)

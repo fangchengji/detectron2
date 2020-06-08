@@ -34,7 +34,7 @@ from detectron2.evaluation import (
 from detectron2.modeling import GeneralizedRCNNWithTTA
 from detectron2.utils.logger import setup_logger
 
-from alleria.data.loader import build_detection_train_loader
+from alleria.data.loader import build_detection_train_loader, build_detection_test_loader
 from alleria.evaluation import WheatEvaluator
 from alleria.data.datasets import register_all_datasets
 from alleria.config import add_alleria_config
@@ -100,9 +100,9 @@ class Trainer(DefaultTrainer):
         res = OrderedDict({k + "_TTA": v for k, v in res.items()})
         return res
 
-    # @classmethod
-    # def build_test_loader(cls, cfg, dataset_name):
-    #     return build_detection_test_loader(cfg, dataset_name, mapper=DatasetMapper(cfg, False))
+    @classmethod
+    def build_test_loader(cls, cfg, dataset_name):
+        return build_detection_test_loader(cfg, dataset_name)
 
     @classmethod
     def build_train_loader(cls, cfg):
