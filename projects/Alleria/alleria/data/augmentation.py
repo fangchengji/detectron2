@@ -14,17 +14,17 @@ import albumentations as A
 def get_albumentations_train_transforms():
     return A.Compose(
         [
-            A.RandomSizedCrop(min_max_height=(600, 800), height=1024, width=1024, p=0.3),
+            A.RandomSizedCrop(min_max_height=(800, 800), height=1024, width=1024, p=0.1),
             A.OneOf([
-                A.HueSaturationValue(hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=1.0),
-                A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=1.0),
-            ], p=0.8),
+                A.HueSaturationValue(hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=0.5),
+                A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+            ], p=0.5),
             A.CLAHE(p=1.0),           # internal logic is rgb order
             A.ToGray(p=0.01),
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
             A.RandomRotate90(p=0.5),
-            A.Cutout(num_holes=8, max_h_size=64, max_w_size=64, fill_value=(123, 116, 103), p=0.5),   # rgb order
+            # A.Cutout(num_holes=8, max_h_size=64, max_w_size=64, fill_value=(123, 116, 103), p=0.5),   # rgb order
         ],
         p=1.0,
         bbox_params=A.BboxParams(
@@ -39,7 +39,7 @@ def get_albumentations_train_transforms():
 def get_albumentations_test_transforms():
     return A.Compose(
         [
-            A.RandomSizedCrop(min_max_height=(800, 800), height=1024, width=1024, p=0.2),
+            A.RandomSizedCrop(min_max_height=(800, 800), height=1024, width=1024, p=0.1),
             # A.OneOf([
             #     A.HueSaturationValue(hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=1),
             #     A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=1),
