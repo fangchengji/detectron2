@@ -9,6 +9,7 @@ from detectron2.layers import Conv2d, ShapeSpec, get_norm
 from .backbone import Backbone
 from .build import BACKBONE_REGISTRY
 from .resnet import build_resnet_backbone
+from .resnest import build_resnest_backbone
 
 
 __all__ = [
@@ -18,7 +19,8 @@ __all__ = [
     "LastLevelMaxPool",
     "LastLevelP6P7",
     "LastLevelP6",
-    "build_fcos_resnet_fpn_backbone"
+    "build_fcos_resnet_fpn_backbone",
+    "build_resnest_fpn_backbone"
 ]
 
 
@@ -298,6 +300,30 @@ def build_fcos_resnet_fpn_backbone(cfg, input_shape: ShapeSpec):
         out_channels=out_channels,
         norm=cfg.MODEL.FPN.NORM,
         top_block=top_block,
+        fuse_type=cfg.MODEL.FPN.FUSE_TYPE,
+    )
+    return backbone
+
+
+# for ResNeSt
+@BACKBONE_REGISTRY.register()
+def build_resnest_fpn_backbone(cfg, input_shape: ShapeSpec):
+    """
+    Args:
+        cfg: a detectron2 CfgNode
+
+    Returns:
+        backbone (Backbone): backbone module, must be a subclass of :class:`Backbone`.
+    """
+    bottom_up = build_resnest_backbone(cfg, input_shape)
+    in_features = cfg.MODEL.FPN.IN_FEATURES
+    out_channels = cfg.MODEL.FPN.OUT_CHANNELS
+    backbone = FPN(
+        bottom_up=bottom_up,
+        in_features=in_features,
+        out_channels=out_channels,
+        norm=cfg.MODEL.FPN.NORM,
+        top_block=LastLevelMaxPool(),
         fuse_type=cfg.MODEL.FPN.FUSE_TYPE,
     )
     return backbone

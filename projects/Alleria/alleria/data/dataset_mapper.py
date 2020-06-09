@@ -254,7 +254,12 @@ class PlusDatasetMapper:
 
         xc, yc = int(random.uniform(w * 0.25, w * 0.75)), int(random.uniform(h * 0.25, h * 0.75))  # mosaic center x, y
 
-        mosaic_img = np.full((h, w, 3), (103, 116, 123), dtype=np.uint8)  # base image with 4 tiles, BGR order
+        if self.img_format == "BGR":
+            fill_val = (103, 116, 123)
+        else:   # rgb
+            fill_val = (123, 116, 103)
+
+        mosaic_img = np.full((h, w, 3), fill_val, dtype=np.uint8)  # base image with 4 tiles, BGR order
         mosaic_labels = []
         for i, (image, data_dict) in enumerate(zip(images, data_dicts)):
             wi, hi = data_dict['width'], data_dict['height']

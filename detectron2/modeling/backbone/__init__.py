@@ -14,3 +14,4 @@ from .mobilenet import build_fcos_mobilenetv2_fpn_backbone, build_mnv2_backbone,
 from .efficientnet import build_efficientnet_backbone
 from .bifpn import BiFPN, build_efficientnet_bifpn_backbone
 from .pafpn import PAFPN, build_fcos_resnet_pafpn_backbone
+from .resnest import ResNeSt, build_resnest_backbone
