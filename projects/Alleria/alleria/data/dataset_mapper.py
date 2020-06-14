@@ -121,9 +121,9 @@ class PlusDatasetMapper:
         # USER: Write your own image loading if it's not from a file
         prob = rand_range()
         if self.is_train:
-            if prob < self.mixup_prob[1] and prob >= self.mixup_prob[0]:
+            if self.mixup_prob[1] > prob >= self.mixup_prob[0]:
                 image, dataset_dict = self.load_mixup(dataset_dict)
-            elif prob < self.mosaic_prob[1] and prob >= self.mosaic_prob[0]:
+            elif self.mosaic_prob[1] > prob >= self.mosaic_prob[0]:
                 image, dataset_dict = self.load_mosaic(dataset_dict)
             else:
                 image = self.load_image(dataset_dict)
@@ -241,7 +241,7 @@ class PlusDatasetMapper:
         data_dicts.extend([copy.deepcopy(self._dataset[random.randint(0, len(self._dataset) - 1)]) for _ in range(3)])
         images = []
         labels = []
-        w, h = 10000, 10000
+        w, h = 1024, 1024
         for data_dict in data_dicts:
             images.append(self.load_image(data_dict))
             if "annotations" in data_dict:

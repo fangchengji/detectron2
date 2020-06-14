@@ -78,12 +78,12 @@ class DefaultPredictor:
             # Apply pre-processing to image.
             # 1. apply albumentation transfrom
             if self._albumentation_tfm is not None:
-                if self.input_format == "BGR":
-                    original_image = original_image[:, :, ::-1]
+                # original image is default BGR, read by cv. translate to RGB
+                original_image = original_image[:, :, ::-1]
                 # need rgb image
                 original_image = self._albumentation_tfm(image=original_image)['image']
-                if self.input_format == "BGR":
-                    original_image = original_image[:, :, ::-1]
+                # translate back to rgb
+                original_image = original_image[:, :, ::-1]
 
             if self.input_format == "RGB":
                 # whether the model expects BGR inputs or RGB

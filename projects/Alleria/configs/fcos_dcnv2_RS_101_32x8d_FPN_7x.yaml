@@ -2,22 +2,26 @@ MODEL:
   META_ARCHITECTURE: "OneStageDetector"
 #  WEIGHTS: "detectron2://ImageNetPretrained/FAIR/X-101-32x8d.pkl"
 #  WEIGHTS: "output/fcos_dcnv2_x101_fpn_3x/model_final.pth"
-  WEIGHTS: "output/FCOS_MS_X_101_32x8d_dcnv2_2x.pth"
+#  WEIGHTS: "output/FCOS_MS_X_101_32x8d_dcnv2_2x.pth"
 #  WEIGHTS: "output/fcos_dcnv2_x101_fpn_3x_1024_FVBCMOHSV/model_final.pth"
 #  WEIGHTS: "output/fcos_dcnv2_x101_fpn_9x_clahe/model_0020999.pth"
+#  WEIGHTS: "output/faster_cascade_rcnn_ResNeSt_101_FPN_syncbn_range-scale_1x-3627ef78.pth"
+#  WEIGHTS: "https://hangzh.s3-us-west-1.amazonaws.com/encoding/models/resnest101_detectron-486f69a8.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   PIXEL_STD: [57.375, 57.120, 58.395]
   BACKBONE:
-    NAME: "build_fcos_resnet_fpn_backbone"
+    NAME: "build_fcos_resnest_fpn_backbone"
   RESNETS:
     DEPTH: 101
     STRIDE_IN_1X1: False
     NUM_GROUPS: 32
     WIDTH_PER_GROUP: 8
+    RADIX: 2
     DEFORM_ON_PER_STAGE: (False, False, True, True)
     DEFORM_MODULATED: True
     OUT_FEATURES: ["res3", "res4", "res5"]
+    NORM: "GN"
   FPN:
     IN_FEATURES: ["res3", "res4", "res5"]
   PROPOSAL_GENERATOR:
@@ -41,12 +45,12 @@ DATALOADER:
   MOSAIC_PROB: (0.0, 0.33)
   MIXUP_PROB: (0.33, 0.5)
 SOLVER:
-  IMS_PER_BATCH: 16
+  IMS_PER_BATCH: 8
   BASE_LR: 0.01
   WARMUP_FACTOR: 0.00125
   WARMUP_ITERS: 800
-  STEPS: (18000, 24000)
-  MAX_ITER: 27000
+  STEPS: (18000, 21000)
+  MAX_ITER: 22000
   CHECKPOINT_PERIOD: 2000
 INPUT:
   CROP:
@@ -56,6 +60,6 @@ INPUT:
   MIN_SIZE_TEST: 1024
 TEST:
   EVAL_PERIOD: 2000
-OUTPUT_DIR: "output/fcos_dcnv2_x101_fpn_9x_clahe"
+OUTPUT_DIR: "output/fcos_dcnv2_RS_101_fpn_7x"
 VERSION: 2
 

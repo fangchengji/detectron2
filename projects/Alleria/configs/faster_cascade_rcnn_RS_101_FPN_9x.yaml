@@ -1,7 +1,8 @@
 MODEL:
   META_ARCHITECTURE: "GeneralizedRCNN"
-  WEIGHTS: "https://hangzh.s3-us-west-1.amazonaws.com/encoding/models/resnest101_detectron-486f69a8.pth"
+#  WEIGHTS: "https://hangzh.s3-us-west-1.amazonaws.com/encoding/models/resnest101_detectron-486f69a8.pth"
 #  WEIGHTS: "output/faster_cascade_rcnn_ResNeSt_101_FPN_syncbn_range-scale_1x-3627ef78.pth"
+  WEIGHTS: "output/faster_cascade_RS_101_9x_enhance/model_2w.pth"
   MASK_ON: False
   BACKBONE:
     NAME: "build_resnest_fpn_backbone"
@@ -31,7 +32,7 @@ MODEL:
     IN_FEATURES: ["p2", "p3", "p4", "p5"]
     NUM_CLASSES: 1
     SCORE_THRESH_TEST: 0.05
-    BATCH_SIZE_PER_IMAGE: 512   # 512 * 0.25 = 128
+    BATCH_SIZE_PER_IMAGE: 512 # 512 * 0.25 = 128  lack of GPU memory, can not increase
     POSITIVE_FRACTION: 0.25
   ROI_BOX_HEAD:
     NAME: "FastRCNNConvFCHead"
@@ -47,9 +48,9 @@ DATASETS:
   TEST: ("wheat_coco_val",)
 DATALOADER:
   MOSAIC_PROB: (0.0, 0.33)
-  MIXUP_PROB: (0.33, 0.5)
+  MIXUP_PROB: (0.33, 0.66)
 SOLVER:
-  IMS_PER_BATCH: 8
+  IMS_PER_BATCH: 12
   BASE_LR: 0.02
   STEPS: (18000, 24000)
   MAX_ITER: 27000
@@ -63,6 +64,6 @@ TEST:
   PRECISE_BN:
     ENABLED: True
   EVAL_PERIOD: 2000
-OUTPUT_DIR: "output/faster_cascade_RS_101_9x"
+OUTPUT_DIR: "output/faster_cascade_RS_101_9x_enhance_0.25"
 VERSION: 2
 
