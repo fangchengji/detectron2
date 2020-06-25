@@ -20,7 +20,8 @@ __all__ = [
     "LastLevelP6P7",
     "LastLevelP6",
     "build_fcos_resnet_fpn_backbone",
-    "build_resnest_fpn_backbone"
+    "build_resnest_fpn_backbone",
+    "build_fcos_resnest_fpn_backbone",
 ]
 
 
@@ -188,7 +189,7 @@ class LastLevelMaxPool(nn.Module):
         return [F.max_pool2d(x, kernel_size=1, stride=2, padding=0)]
 
 
-class LastLevelP6P7(nn.Module):
+class LastLevelP6P7(Backbone):
     """
     This module is used in RetinaNet to generate extra layers, P6 and P7 from
     C5 feature.
@@ -203,13 +204,17 @@ class LastLevelP6P7(nn.Module):
         for module in [self.p6, self.p7]:
             weight_init.c2_xavier_fill(module)
 
+        self._out_features = ['p6', 'p7']
+        self._out_feature_channels = [out_channels, out_channels]
+        self._out_feature_strides = [64, 128]
+
     def forward(self, c5):
         p6 = self.p6(c5)
         p7 = self.p7(F.relu(p6))
         return [p6, p7]
 
 
-class LastLevelP6(nn.Module):
+class LastLevelP6(Backbone):
     """
     This module is used in FCOS to generate extra layers
     """
@@ -221,6 +226,10 @@ class LastLevelP6(nn.Module):
         self.p6 = nn.Conv2d(in_channels, out_channels, 3, 2, 1)
         for module in [self.p6]:
             weight_init.c2_xavier_fill(module)
+
+        self._out_features = ['p6']
+        self._out_feature_channels = [out_channels]
+        self._out_feature_strides = [64]
 
     def forward(self, x):
         p6 = self.p6(x)
@@ -324,6 +333,37 @@ def build_resnest_fpn_backbone(cfg, input_shape: ShapeSpec):
         out_channels=out_channels,
         norm=cfg.MODEL.FPN.NORM,
         top_block=LastLevelMaxPool(),
+        fuse_type=cfg.MODEL.FPN.FUSE_TYPE,
+    )
+    return backbone
+
+
+@BACKBONE_REGISTRY.register()
+def build_fcos_resnest_fpn_backbone(cfg, input_shape: ShapeSpec):
+    """
+    Args:
+        cfg: a detectron2 CfgNode
+
+    Returns:
+        backbone (Backbone): backbone module, must be a subclass of :class:`Backbone`.
+    """
+    bottom_up = build_resnest_backbone(cfg, input_shape)
+    in_features = cfg.MODEL.FPN.IN_FEATURES
+    out_channels = cfg.MODEL.FPN.OUT_CHANNELS
+    top_levels = cfg.MODEL.FCOS.TOP_LEVELS
+    in_channels_top = out_channels
+    if top_levels == 2:
+        top_block = LastLevelP6P7(in_channels_top, out_channels, "p5")
+    if top_levels == 1:
+        top_block = LastLevelP6(in_channels_top, out_channels, "p5")
+    elif top_levels == 0:
+        top_block = None
+    backbone = FPN(
+        bottom_up=bottom_up,
+        in_features=in_features,
+        out_channels=out_channels,
+        norm=cfg.MODEL.FPN.NORM,
+        top_block=top_block,
         fuse_type=cfg.MODEL.FPN.FUSE_TYPE,
     )
     return backbone

@@ -6,23 +6,21 @@ MODEL:
 #  WEIGHTS: "output/fcos_dcnv2_x101_fpn_3x_1024_FVBCMOHSV/model_final.pth"
 #  WEIGHTS: "output/fcos_dcnv2_x101_fpn_9x_clahe/model_0020999.pth"
 #  WEIGHTS: "output/faster_cascade_rcnn_ResNeSt_101_FPN_syncbn_range-scale_1x-3627ef78.pth"
-#  WEIGHTS: "https://hangzh.s3-us-west-1.amazonaws.com/encoding/models/resnest101_detectron-486f69a8.pth"
+  WEIGHTS: "https://hangzh.s3-us-west-1.amazonaws.com/encoding/models/resnest101_detectron-486f69a8.pth"
   MASK_ON: False
   KEYPOINT_ON: False
-  PIXEL_STD: [57.375, 57.120, 58.395]
+  PIXEL_MEAN: [123.68, 116.779, 103.939]
+  PIXEL_STD: [58.393, 57.12, 57.375]
   BACKBONE:
     NAME: "build_fcos_resnest_fpn_backbone"
   RESNETS:
+    OUT_FEATURES: ["res3", "res4", "res5"]
     DEPTH: 101
     STRIDE_IN_1X1: False
-    NUM_GROUPS: 32
-    WIDTH_PER_GROUP: 8
     RADIX: 2
-    DEFORM_ON_PER_STAGE: (False, False, True, True)
-    DEFORM_MODULATED: True
-    OUT_FEATURES: ["res3", "res4", "res5"]
-    NORM: "GN"
+    NORM: "SyncBN"
   FPN:
+    NORM: "SyncBN"
     IN_FEATURES: ["res3", "res4", "res5"]
   PROPOSAL_GENERATOR:
     NAME: "FCOS"
@@ -43,23 +41,24 @@ DATASETS:
   TEST: ("wheat_coco_val",)
 DATALOADER:
   MOSAIC_PROB: (0.0, 0.33)
-  MIXUP_PROB: (0.33, 0.5)
+  MIXUP_PROB: (0.33, 0.34)
 SOLVER:
-  IMS_PER_BATCH: 8
+  IMS_PER_BATCH: 16
   BASE_LR: 0.01
   WARMUP_FACTOR: 0.00125
   WARMUP_ITERS: 800
-  STEPS: (18000, 21000)
-  MAX_ITER: 22000
-  CHECKPOINT_PERIOD: 2000
+  STEPS: (6000, 8000)
+  MAX_ITER: 9000
+  CHECKPOINT_PERIOD: 1500
 INPUT:
+  FORMAT: "RGB"
   CROP:
     ENABLED: False
-  MIN_SIZE_TRAIN: (928, 960, 992, 1024, 1056, 1088)
+  MIN_SIZE_TRAIN: (864, 896, 928, 960, 992, 1024)
   MAX_SIZE_TEST: 1024
   MIN_SIZE_TEST: 1024
 TEST:
-  EVAL_PERIOD: 2000
-OUTPUT_DIR: "output/fcos_dcnv2_RS_101_fpn_7x"
+  EVAL_PERIOD: 1500
+OUTPUT_DIR: "output/fcos_dcnv2_RS_101_fpn_3x_b16"
 VERSION: 2
 

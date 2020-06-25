@@ -15,3 +15,4 @@ from .efficientnet import build_efficientnet_backbone
 from .bifpn import BiFPN, build_efficientnet_bifpn_backbone
 from .pafpn import PAFPN, build_fcos_resnet_pafpn_backbone
 from .resnest import ResNeSt, build_resnest_backbone
+from .sepc import build_fcos_resnet_sepc_backbone
