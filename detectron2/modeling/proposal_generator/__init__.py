@@ -8,5 +8,6 @@ from .gfl_fcos import GFLFCOS
 from .dfl_fcos import DFLFCOS
 from .sepc_fcos import SEPCFCOS
 from .atss import ATSS
+from .qfl_atss import QFLATSS
 
 __all__ = list(globals().keys())
