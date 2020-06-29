@@ -77,13 +77,13 @@ class DefaultPredictor:
         with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
             # Apply pre-processing to image.
             # 1. apply albumentation transfrom
-            if self._albumentation_tfm is not None:
-                # original image is default BGR, read by cv. translate to RGB
-                original_image = original_image[:, :, ::-1]
-                # need rgb image
-                original_image = self._albumentation_tfm(image=original_image)['image']
-                # translate back to rgb
-                original_image = original_image[:, :, ::-1]
+            # if self._albumentation_tfm is not None:
+            #     # original image is default BGR, read by cv. translate to RGB
+            #     original_image = original_image[:, :, ::-1]
+            #     # need rgb image
+            #     original_image = self._albumentation_tfm(image=original_image)['image']
+            #     # translate back to rgb
+            #     original_image = original_image[:, :, ::-1]
 
             if self.input_format == "RGB":
                 # whether the model expects BGR inputs or RGB
@@ -95,6 +95,40 @@ class DefaultPredictor:
             inputs = {"image": image, "height": height, "width": width}
             predictions = self.model([inputs])[0]
             return predictions
+
+
+class TTAPredictor(DefaultPredictor):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        from .test_time_augmentation import OneStageDetectorWithTTA
+
+        # self.tta_mapper = DatasetMapperTTA(cfg)
+        self.meta_arch = OneStageDetectorWithTTA(cfg, self.model)
+
+    def __call__(self, original_image):
+        with torch.no_grad():
+            # 1. apply albumentation transfrom
+            # if self._albumentation_tfm is not None:
+            #     # original image is default BGR, read by cv. translate to RGB
+            #     original_image = original_image[:, :, ::-1]
+            #     # need rgb image
+            #     original_image = self._albumentation_tfm(image=original_image)['image']
+            #     # translate back to rgb
+            #     original_image = original_image[:, :, ::-1]
+
+            if self.input_format == "RGB":
+                # whether the model expects BGR inputs or RGB
+                original_image = original_image[:, :, ::-1]
+
+            height, width = original_image.shape[:2]
+            image = self.transform_gen.get_transform(original_image).apply_image(original_image)
+            image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
+
+            inputs = [{"image": image, "height": height, "width": width}]
+
+            # 2. run TTA Inference
+            results = self.meta_arch(inputs)[0]
+            return results
 
 
 class VisualizationDemo(object):
@@ -112,7 +146,10 @@ class VisualizationDemo(object):
         self.cpu_device = torch.device("cpu")
         self.instance_mode = instance_mode
 
-        self.predictor = DefaultPredictor(cfg)
+        if cfg.TEST.AUG.ENABLED:
+            self.predictor = TTAPredictor(cfg)
+        else:
+            self.predictor = DefaultPredictor(cfg)
 
     def run_on_image(self, image):
         """

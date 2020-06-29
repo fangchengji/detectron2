@@ -40,7 +40,7 @@ DATASETS:
   TRAIN: ("wheat_coco_train",)
   TEST: ("wheat_coco_val",)
 DATALOADER:
-  MOSAIC_PROB: (0.0, 0.33)
+  MOSAIC_PROB: (0.0, 0.01)
   MIXUP_PROB: (0.33, 0.34)
 SOLVER:
   IMS_PER_BATCH: 16
@@ -59,6 +59,8 @@ INPUT:
   MIN_SIZE_TEST: 1024
 TEST:
   EVAL_PERIOD: 1500
-OUTPUT_DIR: "output/fcos_dcnv2_RS_101_fpn_3x_b16"
+  PRECISE_BN:
+    ENABLED: True
+OUTPUT_DIR: "output/fcos_RS_101_fpn_3x_nomosaic"
 VERSION: 2
 

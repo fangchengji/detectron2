@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from detectron2.layers import ShapeSpec, cat, ml_nms, diou_nms
 from detectron2.modeling.proposal_generator.build import PROPOSAL_GENERATOR_REGISTRY
 
-from detectron2.layers import DFConv2d, FCOSIOULoss, get_norm, quality_focal_loss
+from detectron2.layers import DFConv2d, FCOSIOULoss, get_norm, quality_focal_loss, distribution_focal_loss
 from detectron2.structures import Instances, Boxes
 from detectron2.utils.comm import get_world_size, reduce_sum
 # from fvcore.nn import sigmoid_focal_loss_jit
@@ -16,7 +16,7 @@ from detectron2.layers import sepc_conv
 from detectron2.modeling.backbone.sepc import iBN
 
 
-__all__ = ["GFLFCOS"]
+__all__ = ["DFLFCOS"]
 
 INF = 100000000
 
@@ -31,7 +31,7 @@ class Scale(nn.Module):
 
 
 @PROPOSAL_GENERATOR_REGISTRY.register()
-class GFLFCOS(nn.Module):
+class DFLFCOS(nn.Module):
     def __init__(self, cfg, input_shape: Dict[str, ShapeSpec]):
         super().__init__()
         # fmt: off
@@ -95,7 +95,7 @@ class GFLFCOS(nn.Module):
         """
         features = [features[f] for f in self.in_features]
         locations = self.compute_locations(features)
-        logits_pred, reg_pred, bbox_towers = self.fcos_head(features)
+        logits_pred, reg_pred, bbox_towers, scales = self.fcos_head(features)
 
         if self.export_onnx:
             return logits_pred, reg_pred
@@ -119,6 +119,7 @@ class GFLFCOS(nn.Module):
             pre_nms_topk,
             post_nms_topk,
             gt_instances,
+            scales,
         )
 
         if self.training:
@@ -216,7 +217,7 @@ class FCOSHead(nn.Module):
             padding=1
         )
         self.bbox_pred = nn.Conv2d(
-            in_channels, 4, kernel_size=3,
+            in_channels, 4 * (self.reg_max + 1), kernel_size=3,
             stride=1, padding=1
         )
         # self.ctrness = nn.Conv2d(
@@ -251,6 +252,7 @@ class FCOSHead(nn.Module):
         bbox_reg = []
         # ctrness = []
         bbox_towers = []
+        scales = []
 
         # # sepc code
         # cls = [self.cconv(level, item) for level, item in enumerate(x)]
@@ -268,11 +270,13 @@ class FCOSHead(nn.Module):
             # ctrness.append(self.ctrness(bbox_tower))
             reg = self.bbox_pred(bbox_tower)
             if self.scales is not None:
-                reg = self.scales[l](reg)
+                # reg = self.scales[l](reg)
+                scales.append(self.scales[l])
             # Note that we use relu, as in the improved FCOS, instead of exp.
-            bbox_reg.append(F.relu(reg))
+            # bbox_reg.append(F.relu(reg))
+            bbox_reg.append(reg)
 
-        return logits, bbox_reg, bbox_towers
+        return logits, bbox_reg, bbox_towers, scales
 
 
 """
@@ -356,14 +360,9 @@ class FCOSOutputs(object):
         self.thresh_with_ctr = thresh_with_ctr
         self.nms_type = nms_type
 
-        """
-        In Detectron1, loss is normalized by number of foreground samples in the batch.
-        When batch size is 1 per GPU, #foreground has a large variance and
-        using it lead to lower performance. Here we maintain an EMA of #foreground to
-        stabilize the normalizer.
-        """
-        self.loss_normalizer = 100  # initialize with any reasonable #fg that's not too small
-        self.loss_normalizer_momentum = 0.9
+        # for dfl
+        self.reg_max = 8
+        self.distribution_project = Project(self.reg_max)
 
     def __call__(
         self,
@@ -376,6 +375,7 @@ class FCOSOutputs(object):
         pre_nms_top_n,
         fpn_post_nms_top_n,
         gt_instances=None,
+        scales=None,
     ):
         self.logits_pred = logits_pred
         self.reg_pred = reg_pred
@@ -390,6 +390,8 @@ class FCOSOutputs(object):
         self.pre_nms_thresh = pre_nms_thresh
         self.pre_nms_top_n = pre_nms_top_n
         self.fpn_post_nms_top_n = fpn_post_nms_top_n
+
+        self.scales = scales
 
     def _transpose(self, training_targets, num_loc_list):
         '''
@@ -436,6 +438,8 @@ class FCOSOutputs(object):
         reg_targets = training_targets["reg_targets"]
         for l in range(len(reg_targets)):
             reg_targets[l] = reg_targets[l] / float(self.strides[l])
+            # for dfl
+            reg_targets[l] = reg_targets[l].clamp(min=0.0, max=self.reg_max - 0.01)
 
         return training_targets
 
@@ -550,7 +554,13 @@ class FCOSOutputs(object):
         reg_pred = cat(
             [
                 # Reshape: (N, B, Hi, Wi) -> (N, Hi, Wi, B) -> (N*Hi*Wi, B)
-                x.permute(0, 2, 3, 1).reshape(-1, 4)
+                scale(self.distribution_project(x.permute(0, 2, 3, 1).reshape(-1, 4 * (self.reg_max + 1))))
+                for x, scale in zip(self.reg_pred, self.scales)
+            ], dim=0, )
+        reg_pred_dfl = cat(
+            [
+                # Reshape: (N, B, Hi, Wi) -> (N, Hi, Wi, B) -> (N*Hi*Wi, B)
+                x.permute(0, 2, 3, 1).reshape(-1, 4 * (self.reg_max + 1))
                 for x in self.reg_pred
             ], dim=0, )
         # ctrness_pred = cat(
@@ -576,6 +586,7 @@ class FCOSOutputs(object):
             reg_targets,
             logits_pred,
             reg_pred,
+            reg_pred_dfl,
             # ctrness_pred,
             self.focal_loss_alpha,
             self.focal_loss_gamma,
@@ -588,6 +599,7 @@ class FCOSOutputs(object):
         reg_targets,
         logits_pred,
         reg_pred,
+        reg_pred_dfl,
         # ctrness_pred,
         focal_loss_alpha,
         focal_loss_gamma,
@@ -615,12 +627,14 @@ class FCOSOutputs(object):
         # ) / num_pos_avg
 
         reg_pred = reg_pred[pos_inds]
+        # pred_distance = self.distribution_project(reg_pred)
         reg_targets = reg_targets[pos_inds]
 
-        ctrness_targets = compute_ctrness_targets(reg_targets)
-        ctrness_targets_sum = ctrness_targets.sum()
-        ctrness_norm = max(reduce_sum(ctrness_targets_sum).item() / num_gpus, 1e-6)
+        # ctrness_targets = compute_ctrness_targets(reg_targets)
+        # ctrness_targets_sum = ctrness_targets.sum()
+        # ctrness_norm = max(reduce_sum(ctrness_targets_sum).item() / num_gpus, 1e-6)
 
+        # use pred cls score as weight
         weight_targets = logits_pred.detach().sigmoid().max(dim=1)[0][pos_inds]
         weight_targets_sum = weight_targets.sum()
         weight_norm = max(reduce_sum(weight_targets_sum).item() / num_gpus, 1e-6)
@@ -645,9 +659,9 @@ class FCOSOutputs(object):
         reg_loss = iou_loss(
             reg_pred,
             reg_targets,
-            ctrness_targets,
-            # weight_targets,
-        ) / ctrness_norm
+            # ctrness_targets,
+            weight_targets,
+        ) / weight_norm
 
         # ctrness_loss = F.binary_cross_entropy_with_logits(
         #     ctrness_pred,
@@ -655,10 +669,22 @@ class FCOSOutputs(object):
         #     reduction="sum"
         # ) / num_pos_avg
 
+        # dfl loss
+        pred_ltrb = reg_pred_dfl[pos_inds].reshape(-1, self.reg_max + 1)
+        target_ltrb = reg_targets.reshape(-1)
+        assert len(target_ltrb) == len(pred_ltrb), "Pred size is not equal to target!"
+        loss_dfl = distribution_focal_loss(
+            pred_ltrb,
+            target_ltrb,
+            weight=weight_targets[:, None].expand(-1, 4).reshape(-1),
+            avg_factor=4.0 * 4.0,
+        ) / weight_norm
+
         losses = {
             "loss_fcos_cls": class_loss,
             "loss_fcos_loc": reg_loss,
             # "loss_fcos_ctr": ctrness_loss
+            "loss_dfl": loss_dfl,
         }
         return losses, {}
 
@@ -708,6 +734,7 @@ class FCOSOutputs(object):
         for i, (l, o, r, s) in enumerate(zip(*bundle)):
             # recall that during training, we normalize regression targets with FPN's stride.
             # we denormalize them here.
+            r = self.scales[i](self.distribution_project(r.permute(0, 2, 3, 1)))    # N, C, H, W --> N, H, W, C
             r = r * s
             sampled_boxes.append(
                 self.forward_for_single_feature_map(
@@ -729,8 +756,8 @@ class FCOSOutputs(object):
         # put in the same format as locations
         box_cls = box_cls.view(N, C, H, W).permute(0, 2, 3, 1)
         box_cls = box_cls.reshape(N, -1, C).sigmoid()
-        box_regression = reg_pred.view(N, 4, H, W).permute(0, 2, 3, 1)
-        box_regression = box_regression.reshape(N, -1, 4)
+        # box_regression = reg_pred.view(N, 4, H, W).permute(0, 2, 3, 1)
+        box_regression = reg_pred.reshape(N, -1, 4)
         # ctrness = ctrness.view(N, 1, H, W).permute(0, 2, 3, 1)
         # ctrness = ctrness.reshape(N, -1).sigmoid()
 
@@ -811,3 +838,17 @@ class FCOSOutputs(object):
             results.append(result)
         return results
 
+
+class Project(nn.Module):
+    """
+    A fixed project layer for distribution
+    """
+    def __init__(self, reg_max=8):
+        super(Project, self).__init__()
+        self.reg_max = reg_max
+        self.register_buffer('project', torch.linspace(0, self.reg_max, self.reg_max + 1))
+
+    def forward(self, x):
+        x = F.softmax(x.reshape(-1, self.reg_max + 1), dim=1)
+        x = F.linear(x, self.project.to(x.device)).reshape(-1, 4)
+        return x

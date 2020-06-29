@@ -19,17 +19,17 @@ def get_albumentations_train_transforms():
                 A.HueSaturationValue(hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=1.0),
                 A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=1.0),
             ], p=0.8),
-            A.CLAHE(p=1.0),           # internal logic is rgb order
+            A.CLAHE(p=0.3),           # internal logic is rgb order
             A.ToGray(p=0.01),
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
             A.RandomRotate90(p=0.5),
-            A.Cutout(num_holes=8, max_h_size=64, max_w_size=64, fill_value=(123, 116, 103), p=0.5),   # rgb order
+            A.Cutout(num_holes=8, max_h_size=64, max_w_size=64, fill_value=(124, 117, 104), p=0.5),   # rgb order
         ],
         p=1.0,
         bbox_params=A.BboxParams(
             format='coco',
-            min_area=8,
+            min_area=4,
             min_visibility=0.01,
             label_fields=['category_id']
         )
@@ -39,20 +39,20 @@ def get_albumentations_train_transforms():
 def get_albumentations_test_transforms():
     return A.Compose(
         [
-            A.RandomSizedCrop(min_max_height=(600, 800), height=1024, width=1024, p=0.3),
-            A.OneOf([
-                A.HueSaturationValue(hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=1),
-                A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=1),
-            ], p=0.5),
-            A.CLAHE(p=1.0),
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.5),
-            A.RandomRotate90(p=0.5),
+            # A.RandomSizedCrop(min_max_height=(800, 800), height=1024, width=1024, p=0.3),
+            # A.OneOf([
+            #     A.HueSaturationValue(hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=1),
+            #     A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=1),
+            # ], p=0.5),
+            # A.CLAHE(p=0.1),
+            # A.HorizontalFlip(p=0.5),
+            # A.VerticalFlip(p=0.5),
+            # A.RandomRotate90(p=0.5),
         ],
         p=1.0,
         bbox_params=A.BboxParams(
             format='coco',
-            min_area=8,
+            min_area=4,
             min_visibility=0.01,
             label_fields=['category_id']
         )
@@ -78,6 +78,143 @@ def augment_hsv(img, hgain=0.5, sgain=0.5, vgain=0.5):
     img_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val))).astype(dtype)
     img = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)  # no return needed
     return img
+
+
+# class Cutout(A.DualTransform):
+#     """CoarseDropout of the square regions in the image.
+#     Reference:
+#     |  https://arxiv.org/abs/1708.04552
+#     |  https://github.com/uoguelph-mlrg/Cutout/blob/master/util/cutout.py
+#     |  https://github.com/aleju/imgaug/blob/master/imgaug/augmenters/arithmetic.py
+#     """
+#     def __init__(self, p=0.5):
+#         super().__init__()
+#         self.p = p
+#
+#         self.holes = []
+#         # self.num_holes = num_holes
+#         # self.max_h_size = max_h_size
+#         # self.max_w_size = max_w_size
+#         # self.fill_value = fill_value
+#         # warnings.warn("This class has been deprecated. Please use CoarseDropout", DeprecationWarning)
+#
+#     def apply(self, image, holes=[], **params):
+#         h, w = image.shape[:2]
+#         # create random masks
+#         scales = [0.5] * 1 + [0.25] * 2 + [0.125] * 4 + [0.0625] * 8 + [0.03125] * 16  # image size fraction
+#         self.holes = []
+#         for s in scales:
+#             mask_h = random.randint(1, int(h * s))
+#             mask_w = random.randint(1, int(w * s))
+#
+#             # box
+#             xmin = max(0, random.randint(0, w) - mask_w // 2)
+#             ymin = max(0, random.randint(0, h) - mask_h // 2)
+#             xmax = min(w, xmin + mask_w)
+#             ymax = min(h, ymin + mask_h)
+#
+#             self.holes.append([xmin, ymin, xmax, ymax])
+#             # apply random color mask
+#             image[ymin:ymax, xmin:xmax] = [random.randint(64, 191) for _ in range(3)]
+#
+#         return image
+#
+#     def apply_to_bboxes(self, bboxes, **params):
+#         # return [self.apply_to_bbox(tuple(bbox[:4]), **params) + tuple(bbox[4:]) for bbox in bboxes]
+#         # def apply_to_bbox(self, bbox, **params):
+#         assert len(self.holes) > 0, "Should generate holes first! "
+#
+#         def bbox_ioa(box1, box2):
+#             # Returns the intersection over box2 area given box1, box2. box1 is 4, box2 is nx4. boxes are x1y1x2y2
+#             box2 = box2.transpose()
+#
+#             # Get the coordinates of bounding boxes
+#             b1_x1, b1_y1, b1_x2, b1_y2 = box1[0], box1[1], box1[2], box1[3]
+#             b2_x1, b2_y1, b2_x2, b2_y2 = box2[0], box2[1], box2[2], box2[3]
+#
+#             # Intersection area
+#             inter_area = (np.minimum(b1_x2, b2_x2) - np.maximum(b1_x1, b2_x1)).clip(0) * \
+#                          (np.minimum(b1_y2, b2_y2) - np.maximum(b1_y1, b2_y1)).clip(0)
+#
+#             # box2 area
+#             box2_area = (b2_x2 - b2_x1) * (b2_y2 - b2_y1) + 1e-16
+#
+#             # Intersection over box2 area
+#             return inter_area / box2_area
+#
+#         for hole in self.holes:
+#             # return unobscured labels
+#             if len(bboxes) > 0:
+#                 box = np.array(hole, dtype=np.float32)
+#                 ioa = bbox_ioa(box, bboxes[:, :4])  # intersection over area
+#                 bboxes = bboxes[ioa < 0.60]  # remove >60% obscured labels
+#
+#         # clear the holes
+#         self.holes = []
+#         return bboxes
+
+
+def cutout(image, dataset_dict):
+    # https://arxiv.org/abs/1708.04552
+    # https://github.com/hysts/pytorch_cutout/blob/master/dataloader.py
+    # https://towardsdatascience.com/when-conventional-wisdom-fails-revisiting-data-augmentation-for-self-driving-cars-4831998c5509
+    h, w = image.shape[:2]
+    image = image.copy()
+
+    annos = dataset_dict["annotations"]
+    bboxes = np.array([x['bbox'] for x in annos])
+    # xywh to x1y1x2y2
+    bboxes[:, 2] = bboxes[:, 0] + bboxes[:, 2]
+    bboxes[:, 3] = bboxes[:, 1] + bboxes[:, 3]
+
+    def bbox_ioa(box1, box2):
+        # Returns the intersection over box2 area given box1, box2. box1 is 4, box2 is nx4. boxes are x1y1x2y2
+        box2 = box2.transpose()
+
+        # Get the coordinates of bounding boxes
+        b1_x1, b1_y1, b1_x2, b1_y2 = box1[0], box1[1], box1[2], box1[3]
+        b2_x1, b2_y1, b2_x2, b2_y2 = box2[0], box2[1], box2[2], box2[3]
+
+        # Intersection area
+        inter_area = (np.minimum(b1_x2, b2_x2) - np.maximum(b1_x1, b2_x1)).clip(0) * \
+                     (np.minimum(b1_y2, b2_y2) - np.maximum(b1_y1, b2_y1)).clip(0)
+
+        # box2 area
+        box2_area = (b2_x2 - b2_x1) * (b2_y2 - b2_y1) + 1e-16
+
+        # Intersection over box2 area
+        return inter_area / box2_area
+
+    # create random masks
+    scales = [0.5] * 1 + [0.25] * 2 + [0.125] * 4 + [0.0625] * 8 + [0.03125] * 16  # image size fraction
+    box_mask = np.full(len(annos), True)
+    for s in scales:
+        mask_h = random.randint(1, int(h * s))
+        mask_w = random.randint(1, int(w * s))
+
+        # box
+        xmin = max(0, random.randint(0, w) - mask_w // 2)
+        ymin = max(0, random.randint(0, h) - mask_h // 2)
+        xmax = min(w, xmin + mask_w)
+        ymax = min(h, ymin + mask_h)
+
+        # apply random color mask
+        image[ymin:ymax, xmin:xmax] = [random.randint(64, 191) for _ in range(3)]
+
+        # return unobscured labels
+        if len(bboxes) and s > 0.03:
+            box = np.array([xmin, ymin, xmax, ymax], dtype=np.float32)
+            ioa = bbox_ioa(box, bboxes)  # intersection over area
+            # bboxes = bboxes[ioa < 0.60]  # remove >60% obscured labels
+            box_mask = box_mask & (ioa < 0.6)
+    #     image.setflags(write=0)
+    filter_annos = []
+    for i, x in enumerate(annos):
+        if box_mask[i]:
+            filter_annos.append(x)
+    dataset_dict["annotations"] = filter_annos
+
+    return image, dataset_dict
 
 
 def random_affine(img, targets=(), degrees=10, translate=.1, scale=.1, shear=10, border=(0, 0)):

@@ -10,7 +10,7 @@ from .shape_spec import ShapeSpec
 from .blocks import CNNBlockBase
 
 from .iou_loss import IOULoss, FCOSIOULoss
-from .gfocal_loss import quality_focal_loss
+from .gfocal_loss import quality_focal_loss, distribution_focal_loss
 from .sepc_dconv import sepc_conv
 
 __all__ = [k for k in globals().keys() if not k.startswith("_")]

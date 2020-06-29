@@ -16,7 +16,7 @@ from detectron2.data import transforms as T
 from detectron2.structures.boxes import BoxMode
 from detectron2.data.dataset_mapper import DatasetMapper
 
-from .augmentation import get_albumentations_train_transforms, get_albumentations_test_transforms
+from .augmentation import get_albumentations_train_transforms, get_albumentations_test_transforms, cutout
 
 
 class PlusDatasetMapper:
@@ -74,6 +74,7 @@ class PlusDatasetMapper:
         # for multi image augmentation
         self.mosaic_prob = cfg.DATALOADER.MOSAIC_PROB
         self.mixup_prob = cfg.DATALOADER.MIXUP_PROB
+        self.cutout_prob = cfg.DATALOADER.CUTOUT_PROB
 
     def build_transform_gen(self, cfg, is_train):
         """
@@ -119,16 +120,18 @@ class PlusDatasetMapper:
         """
         dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
         # USER: Write your own image loading if it's not from a file
+        image = self.load_image(dataset_dict)
         prob = rand_range()
         if self.is_train:
-            if self.mixup_prob[1] > prob >= self.mixup_prob[0]:
-                image, dataset_dict = self.load_mixup(dataset_dict)
-            elif self.mosaic_prob[1] > prob >= self.mosaic_prob[0]:
-                image, dataset_dict = self.load_mosaic(dataset_dict)
-            else:
-                image = self.load_image(dataset_dict)
-        else:   # test
-            image = self.load_image(dataset_dict)
+            # mosaic and mixup should only apply one
+            if prob <= self.mosaic_prob:
+                image, dataset_dict = self.load_mosaic(image, dataset_dict)
+            elif prob <= self.mixup_prob:
+                image, dataset_dict = self.load_mixup(image, dataset_dict)
+
+            # apply cutout
+            if random.random() < self.cutout_prob:
+                image, dataset_dict = cutout(image, dataset_dict)
 
         # apply albumentations transform
         if self.img_format == "BGR":
@@ -232,18 +235,24 @@ class PlusDatasetMapper:
         utils.check_image_size(dataset_dict, image)
         return image
 
-    def load_mosaic(self, data_dict):
+    def load_mosaic(self, image, data_dict):
         """
             from https://github.com/ultralytics/yolov3
         """
         # loads images in a mosaic
         data_dicts = [data_dict]
         data_dicts.extend([copy.deepcopy(self._dataset[random.randint(0, len(self._dataset) - 1)]) for _ in range(3)])
-        images = []
+        images = [image]
         labels = []
         w, h = 1024, 1024
-        for data_dict in data_dicts:
-            images.append(self.load_image(data_dict))
+        for i, data_dict in enumerate(data_dicts):
+            if i > 0:
+                # load image and boxes
+                image = self.load_image(data_dict)
+                # if random.random() < self.mixup_prob:
+                #     image, data_dict = self.load_mixup(image, data_dict)
+                #     data_dicts[i] = data_dict
+                images.append(image)
             if "annotations" in data_dict:
                 labels.append(
                     np.array([[obj['category_id']] + obj['bbox'] for obj in data_dict["annotations"]], dtype=np.float32)
@@ -332,14 +341,15 @@ class PlusDatasetMapper:
 
         return mosaic_img, data_dict
 
-    def load_mixup(self, data_dict):
+    def load_mixup(self, image, data_dict):
         # loads images in a mosaic
         data_dicts = [data_dict]
         data_dicts.extend([copy.deepcopy(self._dataset[random.randint(0, len(self._dataset) - 1)]) for _ in range(1)])
-        images = []
+        images = [image]
         annos = []
-        for data_dict in data_dicts:
-            images.append(self.load_image(data_dict))
+        for i, data_dict in enumerate(data_dicts):
+            if i > 0:
+                images.append(self.load_image(data_dict))
             if "annotations" in data_dict:
                 annos.extend(data_dict["annotations"].copy())
 

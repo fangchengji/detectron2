@@ -5,16 +5,16 @@
 
 import torch
 
-weight = '/data/fangcheng.ji/detectron2/projects/Alleria/output/faster_cascade_RS_101_9x_enhance_0.25/model_final.pth'
-out = '/data/fangcheng.ji/detectron2/projects/Alleria/output/faster_cascade_RS_101_9x_enhance_0.25/best.pth'
+weight = '/data/fangcheng.ji/detectron2/projects/Alleria/output/fcos_dcnv2_x101_fpn_9x_clahe/model_final.pth'
+out = '/data/fangcheng.ji/detectron2/projects/Alleria/output/fcos_dcnv2_x101_fpn_9x_clahe/best.pth'
 
 checkpoint = torch.load(weight)
-state_dict = checkpoint['model']
+# state_dict = checkpoint['model']
 new_checkpoint = {}
-for key, value in state_dict.items():
+# for key, value in state_dict.items():
     # print(key)
-    if key in ['pixel_mean', 'pixel_std']:
-        print(key, value)
+    # if key in ['pixel_mean', 'pixel_std']:
+    #     print(key, value)
     # if 'conv' in key or 'se' in key:
     #     if 'weight' in key:
     #         key = key.replace('weight', 'conv.weight')
@@ -23,6 +23,6 @@ for key, value in state_dict.items():
     #     print(f'modify: {key}')
     # new_checkpoint[key] = value
 
-# new_checkpoint['model'] = checkpoint['model']
+new_checkpoint['model'] = checkpoint['model']
 # print(new_checkpoint)
-# torch.save(new_checkpoint, out)
+torch.save(new_checkpoint, out)

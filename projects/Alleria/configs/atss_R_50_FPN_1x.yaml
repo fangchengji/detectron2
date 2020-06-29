@@ -11,24 +11,29 @@ MODEL:
   FPN:
     IN_FEATURES: ["res3", "res4", "res5"]
   PROPOSAL_GENERATOR:
-    NAME: "GFLFCOS"
-  FCOS:
+    NAME: "ATSS"
+  ATSS:
     NUM_CLASSES: 1
-    NMS_TH: 0.6
-    PRE_NMS_TOPK_TRAIN: 2000
-    PRE_NMS_TOPK_TEST: 1000
-    LOC_LOSS_TYPE: 'diou'
-    NMS_TYPE: 'nms'
-    NORM: "GN"
+    USE_DCN_IN_TOWER: False
+    POSITIVE_TYPE: 'ATSS' # how to select positves: ATSS (Ours) , SSC (FCOS), IoU (RetinaNet)
+    TOPK: 9 # topk for selecting candidate positive samples from each level
+    REGRESSION_TYPE: 'BOX' # regressing from a 'BOX' or a 'POINT'
+    POST_NMS_TOPK_TEST: 120
+  ANCHOR_GENERATOR:
+    SIZES: [[64], [128], [256], [512], [1024]]  # One size for each in feature map
+    ASPECT_RATIOS: [[1.0,]]  # Three aspect ratios (same for all in feature maps)
+    ANGLES: [[0,]]
+    OFFSET: 0.0
 DATASETS:
   TRAIN: ("wheat_coco_train",)
   TEST: ("wheat_coco_val",)
 DATALOADER:
-  MIXUP_PROB: 0.1
-  MOSAIC_PROB: 0.8
+  MIXUP_PROB: 0.01
+  MOSAIC_PROB: 0.4
+  CUTOUT_PROB: 0.05
 #  ASPECT_RATIO_GROUPING: False
 SOLVER:
-  IMS_PER_BATCH: 16
+  IMS_PER_BATCH: 4
   BASE_LR: 0.01
   STEPS: (60000, 80000)
   MAX_ITER: 90000
@@ -38,6 +43,6 @@ INPUT:
   MIN_SIZE_TRAIN: (640, 672, 704, 736, 768, 800)
 TEST:
   EVAL_PERIOD: 1500
-OUTPUT_DIR: "output/gfl_fcos_r50_test"
+OUTPUT_DIR: "output/atss_r50_test"
 VERSION: 2
 

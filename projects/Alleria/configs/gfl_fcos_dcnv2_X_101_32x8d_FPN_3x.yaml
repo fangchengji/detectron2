@@ -1,9 +1,8 @@
 MODEL:
   META_ARCHITECTURE: "OneStageDetector"
 #  WEIGHTS: "detectron2://ImageNetPretrained/FAIR/X-101-32x8d.pkl"
-  WEIGHTS: "output/fcos_dcnv2_x101_fpn_3x/model_final.pth"
 #  WEIGHTS: "output/FCOS_MS_X_101_32x8d_dcnv2_2x.pth"
-#  WEIGHTS: "output/fcos_dcnv2_x101_fpn_3x_1024_FVBCMOHSV/model_final.pth"
+  WEIGHTS: "output/gfl_fcos_dcnv2_x101_fpn_3x/best.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   PIXEL_STD: [57.375, 57.120, 58.395]
@@ -20,15 +19,15 @@ MODEL:
   FPN:
     IN_FEATURES: ["res3", "res4", "res5"]
   PROPOSAL_GENERATOR:
-    NAME: "FCOS"
+    NAME: "GFLFCOS"
   FCOS:
     NUM_CLASSES: 1
-    NMS_TH: 0.6
-    INFERENCE_TH_TEST: 0.05
+    NMS_TH: 0.45
+    INFERENCE_TH_TEST: 0.35
     PRE_NMS_TOPK_TRAIN: 1000
     PRE_NMS_TOPK_TEST: 1000
-    POST_NMS_TOPK_TRAIN: 150
-    POST_NMS_TOPK_TEST: 150
+    POST_NMS_TOPK_TRAIN: 200
+    POST_NMS_TOPK_TEST: 200
     LOC_LOSS_TYPE: 'diou'
     NMS_TYPE: 'nms'
     NORM: "GN"
@@ -37,8 +36,9 @@ DATASETS:
   TRAIN: ("wheat_coco_train",)
   TEST: ("wheat_coco_val",)
 DATALOADER:
-  MOSAIC_PROB: (0.0, 0.33)
-  MIXUP_PROB: (0.33, 0.66)
+  MOSAIC_PROB: 0.33
+  MIXUP_PROB: 0.34
+  CUTOUT_PROB: 0.0
 SOLVER:
   IMS_PER_BATCH: 16
   BASE_LR: 0.01
@@ -46,20 +46,20 @@ SOLVER:
   WARMUP_ITERS: 800
   STEPS: (6000, 8000)
   MAX_ITER: 9000
-  CHECKPOINT_PERIOD: 2000
+  CHECKPOINT_PERIOD: 1500
 INPUT:
   CROP:
     ENABLED: False
-  MIN_SIZE_TRAIN: (960, 992, 1024, 1056, 1088)
+  MIN_SIZE_TRAIN: (864, 896, 928, 960, 992, 1024)
   MAX_SIZE_TEST: 1024
   MIN_SIZE_TEST: 1024
 TEST:
-  EVAL_PERIOD: 2000
+  EVAL_PERIOD: 1500
   AUG:
     ENABLED: True
-    MIN_SIZES: (800,)
-    MAX_SIZE: 2000
-    FLIP: False
-OUTPUT_DIR: "output/fcos_dcnv2_x101_fpn_3x_eval"
+    MIN_SIZES: (1024,)
+    MAX_SIZE: 1024
+    FLIP: True
+OUTPUT_DIR: "output/gfl_fcos_dcnv2_x101_fpn_3x_eval"
 VERSION: 2
 

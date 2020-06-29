@@ -31,13 +31,14 @@ from detectron2.evaluation import (
     SemSegEvaluator,
     verify_results,
 )
-from detectron2.modeling import GeneralizedRCNNWithTTA
+# from detectron2.modeling import GeneralizedRCNNWithTTA
 from detectron2.utils.logger import setup_logger
 
 from alleria.data.loader import build_detection_train_loader, build_detection_test_loader
 from alleria.evaluation import WheatEvaluator
 from alleria.data.datasets import register_all_datasets
 from alleria.config import add_alleria_config
+from alleria.test_time_augmentation import OneStageDetectorWithTTA
 
 
 class Trainer(DefaultTrainer):
@@ -89,7 +90,7 @@ class Trainer(DefaultTrainer):
         # In the end of training, run an evaluation with TTA
         # Only support some R-CNN models.
         logger.info("Running inference with test-time augmentation ...")
-        model = GeneralizedRCNNWithTTA(cfg, model)
+        model = OneStageDetectorWithTTA(cfg, model)
         evaluators = [
             cls.build_evaluator(
                 cfg, name, output_folder=os.path.join(cfg.OUTPUT_DIR, "inference_TTA")
@@ -133,9 +134,11 @@ def main(args):
         DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
             cfg.MODEL.WEIGHTS, resume=args.resume
         )
-        res = Trainer.test(cfg, model)
+
         if cfg.TEST.AUG.ENABLED:
-            res.update(Trainer.test_with_TTA(cfg, model))
+            res = Trainer.test_with_TTA(cfg, model)
+        else:
+            res = Trainer.test(cfg, model)
         if comm.is_main_process():
             verify_results(cfg, res)
         return res

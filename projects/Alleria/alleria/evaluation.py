@@ -99,10 +99,13 @@ class WheatEvaluator(DatasetEvaluator):
         if cfg.MODEL.META_ARCHITECTURE == "GeneralizedRCNN":
             self._score_thresh = cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST
         elif cfg.MODEL.META_ARCHITECTURE == "OneStageDetector":
-            self._score_thresh = cfg.MODEL.FCOS.INFERENCE_TH_TEST
+            if 'FCOS' in cfg.MODEL.PROPOSAL_GENERATOR.NAME:
+                self._score_thresh = cfg.MODEL.FCOS.INFERENCE_TH_TEST
+            elif 'ATSS' in cfg.MODEL.PROPOSAL_GENERATOR.NAME:
+                self._score_thresh = cfg.MODEL.ATSS.INFERENCE_TH
         else:
             self._logger.warning(f"score thresh is not implement for {cfg.MODEL.META_ARCHITECTURE}")
-            self._score_thresh = 0.4
+            self._score_thresh = 0.35
 
     def reset(self):
         self._predictions = []
@@ -205,16 +208,16 @@ class WheatEvaluator(DatasetEvaluator):
 
             # self._results['bbox'] = {}
             # run wheat evaluation
-            # oof_score = calculate_final_score(predictions, self._id2anno, score_threshold=self._score_thresh)
-            # self._results['bbox'].update({"Score": oof_score})
-            # self._logger.info(f"OOF score is {oof_score}")
+            oof_score = calculate_final_score(predictions, self._id2anno, score_threshold=self._score_thresh)
+            self._results['bbox'].update({"OOFScore": oof_score})
+            self._logger.info(f"OOF score at threshold {self._score_thresh} is {oof_score}")
 
             # calculate the best threshold
-            metric = calculate_best_threshold(predictions, self._id2anno)
+            # metric = calculate_best_threshold(predictions, self._id2anno)
             # self._logger.info(f"best score is {best_score}, best threshold {best_threshold}")
-            if 'bbox' not in self._results:
-                self._results['bbox'] = {}
-            self._results['bbox'].update(metric)
+            # if 'bbox' not in self._results:
+            #     self._results['bbox'] = {}
+            # self._results['bbox'].update(metric)
 
         # Copy so the caller can do whatever with results
         return copy.deepcopy(self._results)

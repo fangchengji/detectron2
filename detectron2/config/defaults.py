@@ -542,6 +542,60 @@ _C.MODEL.EFFICIENTDET.SMOOTH_L1_LOSS_BETA = 0.1
 
 
 # ---------------------------------------------------------------------------- #
+# ATSS Options
+# ---------------------------------------------------------------------------- #
+_C.MODEL.ATSS = CN()
+_C.MODEL.ATSS.NUM_CLASSES = 80  # the number of classes excluding background
+_C.MODEL.ATSS.IN_FEATURES = ["p3", "p4", "p5", "p6", "p7"]
+
+_C.MODEL.ATSS.FPN_STRIDES = [8, 16, 32, 64, 128]
+
+# Anchor parameter
+# _C.MODEL.ATSS.ANCHOR_SIZES = (64, 128, 256, 512, 1024)
+# _C.MODEL.ATSS.ASPECT_RATIOS = (1.0,)
+# _C.MODEL.ATSS.ANCHOR_STRIDES = (8, 16, 32, 64, 128)
+# _C.MODEL.ATSS.STRADDLE_THRESH = 0
+# _C.MODEL.ATSS.OCTAVE = 2.0
+# _C.MODEL.ATSS.SCALES_PER_OCTAVE = 1
+
+# Head parameter
+_C.MODEL.ATSS.NUM_CONVS = 4
+_C.MODEL.ATSS.USE_DCN_IN_TOWER = False
+
+_C.MODEL.ATSS.NORM = "GN"
+
+# Focal loss parameter
+_C.MODEL.ATSS.LOSS_ALPHA = 0.25
+_C.MODEL.ATSS.LOSS_GAMMA = 2.0
+
+# how to select positves: ATSS (Ours) , SSC (FCOS), IoU (RetinaNet), TOPK
+_C.MODEL.ATSS.POSITIVE_TYPE = 'ATSS'
+
+# IoU overlap ratio [bg, fg] for labeling anchors.
+# Anchors with < bg are labeled negative (0)
+# Anchors  with >= bg and < fg are ignored (-1)
+# Anchors with >= fg are labeled positive (1)
+_C.MODEL.ATSS.IOU_THRESHOLDS = [0.4, 0.5]
+_C.MODEL.ATSS.IOU_LABELS = [0, -1, 1]
+
+# topk for selecting candidate positive samples from each level
+_C.MODEL.ATSS.TOPK = 9
+
+# regressing from a box ('BOX') or a point ('POINT')
+_C.MODEL.ATSS.REGRESSION_TYPE = 'BOX'
+
+# Weight for bbox_regression loss
+_C.MODEL.ATSS.REG_LOSS_WEIGHT = 2.0
+
+# Inference parameter
+_C.MODEL.ATSS.PRIOR_PROB = 0.01
+_C.MODEL.ATSS.INFERENCE_TH = 0.05
+_C.MODEL.ATSS.NMS_TH = 0.6
+_C.MODEL.ATSS.PRE_NMS_TOP_N = 1000
+_C.MODEL.ATSS.POST_NMS_TOPK_TEST = 100
+
+
+# ---------------------------------------------------------------------------- #
 # FCOS Head
 # ---------------------------------------------------------------------------- #
 _C.MODEL.FCOS = CN()
@@ -727,6 +781,7 @@ _C.TEST.AUG = CN({"ENABLED": False})
 _C.TEST.AUG.MIN_SIZES = (400, 500, 600, 700, 800, 900, 1000, 1100, 1200)
 _C.TEST.AUG.MAX_SIZE = 4000
 _C.TEST.AUG.FLIP = True
+_C.TEST.AUG.VERTICAL_FLIP = False
 
 _C.TEST.PRECISE_BN = CN({"ENABLED": False})
 _C.TEST.PRECISE_BN.NUM_ITER = 200
