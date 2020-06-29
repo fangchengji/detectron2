@@ -89,7 +89,9 @@ def boxes_fusion_single_image(
     classes = torch.from_numpy(classes).to(device=device)
 
     result = Instances(image_shape)
-    result.pred_boxes = Boxes(boxes)
+    boxes = Boxes(boxes)
+    boxes.clip(image_shape)
+    result.pred_boxes = boxes
     result.scores = scores
     result.pred_classes = classes
 

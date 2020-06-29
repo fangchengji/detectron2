@@ -776,7 +776,9 @@ class FCOSOutputs(object):
             ], dim=1)
 
             boxlist = Instances(image_sizes[i])
-            boxlist.pred_boxes = Boxes(detections)
+            boxes = Boxes(detections)
+            boxes.clip(image_sizes[i])
+            boxlist.pred_boxes = boxes
             boxlist.scores = torch.sqrt(per_box_cls)
             boxlist.pred_classes = per_class
             boxlist.locations = per_locations
