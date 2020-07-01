@@ -40,8 +40,8 @@ DATASETS:
   TRAIN: ("wheat_coco_train",)
   TEST: ("wheat_coco_val",)
 DATALOADER:
-  MOSAIC_PROB: (0.0, 0.01)
-  MIXUP_PROB: (0.33, 0.34)
+  MOSAIC_PROB: 0.33
+  MIXUP_PROB: 0.66
 SOLVER:
   IMS_PER_BATCH: 16
   BASE_LR: 0.01

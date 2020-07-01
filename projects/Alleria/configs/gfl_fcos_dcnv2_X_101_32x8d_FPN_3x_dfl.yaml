@@ -29,15 +29,15 @@ MODEL:
     POST_NMS_TOPK_TRAIN: 200
     POST_NMS_TOPK_TEST: 200
     LOC_LOSS_TYPE: 'diou'
-    NMS_TYPE: 'diou_nms'
+    NMS_TYPE: 'nms'
     NORM: "GN"
     USE_DEFORMABLE: True
 DATASETS:
   TRAIN: ("wheat_coco_train",)
   TEST: ("wheat_coco_val",)
-#DATALOADER:
-#  MOSAIC_PROB: (0.0, 0.33)
-#  MIXUP_PROB: (0.33, 0.34)
+DATALOADER:
+  MOSAIC_PROB: 0.33
+  MIXUP_PROB: 0.34
 SOLVER:
   IMS_PER_BATCH: 16
   BASE_LR: 0.01

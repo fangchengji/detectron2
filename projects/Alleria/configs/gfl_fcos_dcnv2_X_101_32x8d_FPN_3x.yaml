@@ -22,8 +22,8 @@ MODEL:
     NAME: "GFLFCOS"
   FCOS:
     NUM_CLASSES: 1
-    NMS_TH: 0.45
-    INFERENCE_TH_TEST: 0.35
+    NMS_TH: 0.5
+    INFERENCE_TH_TEST: 0.4
     PRE_NMS_TOPK_TRAIN: 1000
     PRE_NMS_TOPK_TEST: 1000
     POST_NMS_TOPK_TRAIN: 200
@@ -60,6 +60,7 @@ TEST:
     MIN_SIZES: (1024,)
     MAX_SIZE: 1024
     FLIP: True
+    VERTICAL_FLIP: True
 OUTPUT_DIR: "output/gfl_fcos_dcnv2_x101_fpn_3x_eval"
 VERSION: 2
 

@@ -3,15 +3,17 @@ import copy
 import numpy as np
 from itertools import count
 import torch
-from fvcore.transforms import HFlipTransform, NoOpTransform
+from fvcore.transforms import HFlipTransform, NoOpTransform, Transform
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel
+import cv2
 
 from detectron2.data.detection_utils import read_image
 from detectron2.data.transforms import (
     RandomFlip,
     ResizeShortestEdge,
     ResizeTransform,
+    TransformGen,
     apply_transform_gens,
 )
 from detectron2.structures import Boxes, Instances
@@ -22,6 +24,154 @@ from .boxes_fusion import boxes_fusion_single_image
 
 
 __all__ = ["DatasetMapperTTA", "OneStageDetectorWithTTA"]
+
+
+class Rotation90Transform(Transform):
+    def __init__(self, h, w, angle=90, expand=True, center=None, interp=None):
+        """
+        Args:
+            h, w (int): original image size
+            angle (float): degrees for rotation
+            expand (bool): choose if the image should be resized to fit the whole
+                rotated image (default), or simply cropped
+            center (tuple (width, height)): coordinates of the rotation center
+                if left to None, the center will be fit to the center of each image
+                center has no effect if expand=True because it only affects shifting
+            interp: cv2 interpolation method, default cv2.INTER_LINEAR
+        """
+        super().__init__()
+        assert angle == 90 or angle == -90, "Only support 90 or -90 angle!"
+        image_center = np.array((w / 2, h / 2))
+        if center is None:
+            center = image_center
+        if interp is None:
+            interp = cv2.INTER_LINEAR
+        abs_cos, abs_sin = (abs(np.cos(np.deg2rad(angle))), abs(np.sin(np.deg2rad(angle))))
+        if expand:
+            # find the new width and height bounds
+            bound_w, bound_h = np.rint(
+                [h * abs_sin + w * abs_cos, h * abs_cos + w * abs_sin]
+            ).astype(int)
+        else:
+            bound_w, bound_h = w, h
+
+        self._set_attributes(locals())
+        self.rm_coords = self.create_rotation_matrix()
+        # Needed because of this problem https://github.com/opencv/opencv/issues/11784
+        self.rm_image = self.create_rotation_matrix(offset=-0.5)
+
+    def apply_image(self, img, interp=None):
+        """
+        img should be a numpy array, formatted as Height * Width * Nchannels
+        """
+        if len(img) == 0 or self.angle % 360 == 0:
+            return img
+        assert img.shape[:2] == (self.h, self.w)
+        interp = interp if interp is not None else self.interp
+        return cv2.warpAffine(img, self.rm_image, (self.bound_w, self.bound_h), flags=interp)
+
+    def apply_coords(self, coords):
+        """
+        coords should be a N * 2 array-like, containing N couples of (x, y) points
+        """
+        coords = np.asarray(coords, dtype=float)
+        if len(coords) == 0 or self.angle % 360 == 0:
+            return coords
+        return cv2.transform(coords[:, np.newaxis, :], self.rm_coords)[:, 0, :]
+
+    def apply_segmentation(self, segmentation):
+        segmentation = self.apply_image(segmentation, interp=cv2.INTER_NEAREST)
+        return segmentation
+
+    def create_rotation_matrix(self, offset=0):
+        center = (self.center[0] + offset, self.center[1] + offset)
+        rm = cv2.getRotationMatrix2D(tuple(center), self.angle, 1)
+        if self.expand:
+            # Find the coordinates of the center of rotation in the new image
+            # The only point for which we know the future coordinates is the center of the image
+            rot_im_center = cv2.transform(self.image_center[None, None, :] + offset, rm)[0, 0, :]
+            new_center = np.array([self.bound_w / 2, self.bound_h / 2]) + offset - rot_im_center
+            # shift the rotation center to the new coordinates
+            rm[:, 2] += new_center
+        return rm
+
+    def inverse(self):
+        """
+        The inverse is to rotate it back with expand, and crop to get the original shape.
+        """
+        if not self.expand:  # Not possible to inverse if a part of the image is lost
+            raise NotImplementedError()
+        rotation = Rotation90Transform(
+            self.bound_h, self.bound_w, -self.angle, True, None, self.interp
+        )
+        # for alleria image is 1024 * 1024, don't need crop
+        # crop = CropTransform(
+        #     (rotation.bound_w - self.w) // 2, (rotation.bound_h - self.h) // 2, self.w, self.h
+        # )
+        return rotation
+
+
+class Rotation90Gen(TransformGen):
+    """
+    Flip the image horizontally or vertically with the given probability.
+    """
+
+    def __init__(self, prob=0.5):
+        super().__init__()
+        self._init(locals())
+
+    def get_transform(self, img):
+        h, w = img.shape[:2]
+        do = self._rand_range() < self.prob
+        if do:
+            return Rotation90Transform(h, w)
+        else:
+            return NoOpTransform()
+
+
+class CLAHE(Transform):
+    def __init__(self, img_format='BGR'):
+        super().__init__()
+        self.img_format=img_format
+
+    def apply_image(self, img, clip_limit=2.0, tile_grid_size=(8, 8)):
+        if img.dtype != np.uint8:
+            raise TypeError("clahe supports only uint8 inputs")
+
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
+
+        if len(img.shape) == 2 or img.shape[2] == 1:
+            if self.img_format=="BGR":
+                img = img[..., ::-1]
+            # apply to rgb image
+            img = clahe.apply(img)
+
+            if self.img_format=="BGR":
+                img = img[..., ::-1]
+        else:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
+            img[:, :, 0] = clahe.apply(img[:, :, 0])
+            img = cv2.cvtColor(img, cv2.COLOR_LAB2RGB)
+        return img
+
+    def apply_coords(self, coords):
+        return coords
+
+    def inverse(self):
+        return self
+
+
+class CLAHEGen(TransformGen):
+    def __init__(self, prob=0.5, img_format='BGR'):
+        super().__init__()
+        self._init(locals())
+
+    def get_transform(self, img):
+        do = self._rand_range() < self.prob
+        if do:
+            return CLAHE(self.img_format)
+        else:
+            return NoOpTransform()
 
 
 class DatasetMapperTTA:
@@ -73,6 +223,10 @@ class DatasetMapperTTA:
             if self.vertical_flip:
                 flip = RandomFlip(prob=1.0, horizontal=False, vertical=True)
                 tfm_gen_candidates.append([resize, flip])  # resize + flip
+
+            tfm_gen_candidates.append([resize, Rotation90Gen(prob=1.0)])
+            # tfm_gen_candidates.append([resize, CLAHEGen(prob=1.0, img_format=self.image_format)])
+            # tfm_gen_candidates.append([resize, Rotation90Gen(prob=1.0), Rotation90Gen(prob=1.0)])
 
         # Apply all the augmentations
         ret = []
