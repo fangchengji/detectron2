@@ -7,6 +7,7 @@ import time
 import cv2
 import tqdm
 import numpy as np
+import json
 
 from detectron2.config import get_cfg
 from detectron2.data.detection_utils import read_image
@@ -14,6 +15,7 @@ from detectron2.utils.logger import setup_logger
 
 from alleria.predictor import VisualizationDemo
 from alleria.config import add_alleria_config
+from alleria.pseudo_label import pred_instances_to_coco_json, set_pseudo_cfg
 
 # constants
 WINDOW_NAME = "COCO detections"
@@ -83,14 +85,18 @@ def format_result(image_id, predictions):
     return res
 
 
-if __name__ == "__main__":
-    mp.set_start_method("spawn", force=True)
-    args = get_parser().parse_args()
-    setup_logger(name="fvcore")
-    logger = setup_logger()
-    logger.info("Arguments: " + str(args))
+def main(args, cfg, logger, pseudo_label=False):
 
-    cfg = setup_cfg(args)
+    # pseudo label
+    pseudo_threshold = 0.4
+    coco_annos = {
+        "info": {},
+        "licenses": [],
+        "images": [],
+        "annotations": [],
+        "categories": [{"id": 1, "name": "wheat", "supercategory": "wheat", "skeleton": []}],
+    }
+    instance_id = 0
 
     demo = VisualizationDemo(cfg)
     results = ["image_id,PredictionString\n"]
@@ -98,14 +104,28 @@ if __name__ == "__main__":
         if len(args.input) == 1:
             args.input = glob.glob(os.path.expanduser(args.input[0]))
             assert args.input, "The input path(s) was not found"
-        for path in tqdm.tqdm(args.input, disable=not args.output):
+            # input < 10 doesn't do pseudo label
+            # pseudo_label = pseudo_label & (len(args.input) > 10)
+        for idx, path in tqdm.tqdm(enumerate(args.input), disable=not args.output):
             # use PIL, to be consistent with evaluation
             img = read_image(path, format="BGR")
+            img_size = img.shape[:2]
             start_time = time.time()
             predictions, visualized_output = demo.run_on_image(img)
+
             # output result
-            result = format_result(os.path.basename(path).split('.')[0], predictions)
-            results.append(result)
+            if not pseudo_label:
+                result = format_result(os.path.basename(path).split('.')[0], predictions)
+                results.append(result)
+            else:
+                instances = predictions["instances"].to('cpu')
+                img_info, annos, instance_id = pred_instances_to_coco_json(
+                    instances, path, idx, instance_id, img_size, pseudo_threshold
+                )
+                if img_info is not None and annos is not None:
+                    coco_annos["images"].append(img_info)
+                    coco_annos["annotations"].extend(annos)
+
             logger.info(
                 "{}: {} in {:.2f}s".format(
                     path,
@@ -124,60 +144,52 @@ if __name__ == "__main__":
                     assert len(args.input) == 1, "Please specify a directory with args.output"
                     out_filename = args.output
                 visualized_output.save(out_filename)
-            else:
-                cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
-                cv2.imshow(WINDOW_NAME, visualized_output.get_image()[:, :, ::-1])
-                if cv2.waitKey(0) == 27:
-                    break  # esc to quit
-    elif args.webcam:
-        assert args.input is None, "Cannot have both --input and --webcam!"
-        assert args.output is None, "output not yet supported with --webcam!"
-        cam = cv2.VideoCapture(0)
-        for vis in tqdm.tqdm(demo.run_on_video(cam)):
-            cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
-            cv2.imshow(WINDOW_NAME, vis)
-            if cv2.waitKey(1) == 27:
-                break  # esc to quit
-        cam.release()
-        cv2.destroyAllWindows()
-    elif args.video_input:
-        video = cv2.VideoCapture(args.video_input)
-        width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        frames_per_second = video.get(cv2.CAP_PROP_FPS)
-        num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        basename = os.path.basename(args.video_input)
 
-        if args.output:
-            if os.path.isdir(args.output):
-                output_fname = os.path.join(args.output, basename)
-                output_fname = os.path.splitext(output_fname)[0] + ".mkv"
-            else:
-                output_fname = args.output
-            assert not os.path.isfile(output_fname), output_fname
-            output_file = cv2.VideoWriter(
-                filename=output_fname,
-                # some installation of opencv may not support x264 (due to its license),
-                # you can try other format (e.g. MPEG)
-                fourcc=cv2.VideoWriter_fourcc(*"x264"),
-                fps=float(frames_per_second),
-                frameSize=(width, height),
-                isColor=True,
+        if pseudo_label:
+            # save pseudo label to json file
+            json_name = args.output + '/pseudo_label.json'
+            with open(json_name, 'w') as f:
+                json.dump(coco_annos, f)
+
+            # train
+            from alleria.pseudo_label import register_pseudo_datasets, set_pseudo_cfg, PseudoTrainer
+            # from train_net import Trainer
+
+            # data prepare
+            register_pseudo_datasets(
+                image_root=os.path.dirname(args.input[0]),
+                json_file=args.output + "/pseudo_label.json"
             )
-        assert os.path.isfile(args.video_input)
-        for vis_frame in tqdm.tqdm(demo.run_on_video(video), total=num_frames):
-            if args.output:
-                output_file.write(vis_frame)
-            else:
-                cv2.namedWindow(basename, cv2.WINDOW_NORMAL)
-                cv2.imshow(basename, vis_frame)
-                if cv2.waitKey(1) == 27:
-                    break  # esc to quit
-        video.release()
-        if args.output:
-            output_file.release()
-        else:
-            cv2.destroyAllWindows()
+            # set training cfg
+            set_pseudo_cfg(cfg, len(args.input), args.output)
 
-    with open('submission.csv', 'w') as f:
-        f.writelines(results)
+            # trainer
+            trainer = PseudoTrainer(cfg)
+            trainer.resume_or_load(resume=False)
+            trainer.train()
+        else:
+            with open('submission.csv', 'w') as f:
+                f.writelines(results)
+
+
+if __name__ == "__main__":
+    mp.set_start_method("spawn", force=True)
+    args = get_parser().parse_args()
+    setup_logger(name="fvcore")
+    logger = setup_logger()
+    logger.info("Arguments: " + str(args))
+
+    cfg = setup_cfg(args)
+
+    pseudo_label = True
+
+    if pseudo_label:
+        main(args, cfg, logger, pseudo_label=True)
+
+        # after training
+        cfg.defrost()
+        cfg.MODEL.WEIGHTS = os.path.join(args.output, "model_final.pth")
+        cfg.freeze()
+
+    # run inference
+    main(args, cfg, logger, pseudo_label=False)

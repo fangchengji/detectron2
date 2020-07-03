@@ -58,7 +58,7 @@ INPUT:
 TEST:
   EVAL_PERIOD: 2000
   AUG:
-    ENABLED: True
+    ENABLED: False
     MIN_SIZES: (1024,)
     MAX_SIZE: 1024
     FLIP: True
