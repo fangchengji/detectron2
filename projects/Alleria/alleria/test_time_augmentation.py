@@ -226,7 +226,10 @@ class DatasetMapperTTA:
 
             tfm_gen_candidates.append([resize, Rotation90Gen(prob=1.0)])
             # tfm_gen_candidates.append([resize, CLAHEGen(prob=1.0, img_format=self.image_format)])
-            # tfm_gen_candidates.append([resize, Rotation90Gen(prob=1.0), Rotation90Gen(prob=1.0)])
+            tfm_gen_candidates.append([resize,
+                                       Rotation90Gen(prob=1.0),
+                                       Rotation90Gen(prob=1.0),
+                                       Rotation90Gen(prob=1.0)])
 
         # Apply all the augmentations
         ret = []
