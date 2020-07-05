@@ -12,10 +12,13 @@ import json
 from detectron2.config import get_cfg
 from detectron2.data.detection_utils import read_image
 from detectron2.utils.logger import setup_logger
+from detectron2.data import DatasetCatalog
 
 from alleria.predictor import VisualizationDemo
 from alleria.config import add_alleria_config
-from alleria.pseudo_label import pred_instances_to_coco_json, set_pseudo_cfg
+from alleria.pseudo_label import pred_instances_to_coco_json, \
+    register_pseudo_datasets, set_pseudo_cfg, PseudoTrainer
+
 
 # constants
 WINDOW_NAME = "COCO detections"
@@ -152,14 +155,14 @@ def main(args, cfg, logger, pseudo_label=False):
                 json.dump(coco_annos, f)
 
             # train
-            from alleria.pseudo_label import register_pseudo_datasets, set_pseudo_cfg, PseudoTrainer
-            # from train_net import Trainer
-
             # data prepare
-            register_pseudo_datasets(
-                image_root=os.path.dirname(args.input[0]),
-                json_file=args.output + "/pseudo_label.json"
-            )
+            all_datasets = DatasetCatalog.list()
+            if "wheat_coco_pseudo" not in all_datasets:
+                register_pseudo_datasets(
+                    "wheat_coco_pseudo",
+                    image_root=os.path.dirname(args.input[0]),
+                    json_file=args.output + "/pseudo_label.json"
+                )
             # set training cfg
             set_pseudo_cfg(cfg, len(args.input), args.output)
 
@@ -190,6 +193,8 @@ if __name__ == "__main__":
         cfg.defrost()
         cfg.MODEL.WEIGHTS = os.path.join(args.output, "model_final.pth")
         cfg.freeze()
+
+        main(args, cfg, logger, pseudo_label=True)
 
     # run inference
     main(args, cfg, logger, pseudo_label=False)

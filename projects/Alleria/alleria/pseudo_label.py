@@ -14,35 +14,9 @@ from alleria.data.datasets import register_coco_instances, _get_coco_meta
 from .data.loader import build_detection_train_loader
 
 
-# INPUT = "/kaggle/input/global-wheat-detection/test"
-# OUTPUT = "/kaggle/working"
-
-# INPUT = "/data/fangcheng.ji/datasets/wheat/pseudo_test"
-# OUTPUT = "/data/fangcheng.ji/datasets/wheat/pseudo_test_out"
-
-
-# _PSEUDO_DATASETS = {
-#     "wheat_coco_pseudo": (
-#         INPUT,
-#         OUTPUT + "/pseudo_label.json",
-#     ),
-# }
-#
-# def register_pseudo_datasets(root=""):
-#    for key, (image_root, json_file) in _PSEUDO_DATASETS.items():
-#        # Assume pre-defined datasets live in `../datasets`.
-#
-#        register_coco_instances(
-#            key,
-#            _get_coco_meta(),
-#            os.path.join(root, json_file) if "://" not in json_file else json_file,
-#            os.path.join(root, image_root),
-#        )
-
-
-def register_pseudo_datasets(image_root, json_file):
+def register_pseudo_datasets(name, image_root, json_file):
     register_coco_instances(
-        "wheat_coco_pseudo",
+        name,
         _get_coco_meta(),
         json_file=json_file,
         image_root=image_root,
@@ -111,7 +85,7 @@ def set_pseudo_cfg(cfg, img_nums, output_dir):
 
     cfg.SOLVER.IMS_PER_BATCH = 4
 
-    epoch = 10
+    epoch = 4
 
     cfg.SOLVER.BASE_LR = 0.005
     cfg.SOLVER.WARMUP_FACTOR = 0.00005
