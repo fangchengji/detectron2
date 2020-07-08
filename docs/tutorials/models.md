@@ -36,7 +36,7 @@ For example, in order to do inference,
 all existing models expect the "image" key, and optionally "height" and "width".
 The detailed format of inputs and outputs of existing models are explained below.
 
-When in training mode, all models are required to be used under an `EventStorage`.
+__Training__: When in training mode, all models are required to be used under an `EventStorage`.
 The training statistics will be put into the storage:
 ```python
 from detectron2.utils.events import EventStorage
@@ -44,11 +44,18 @@ with EventStorage() as storage:
   losses = model(inputs)
 ```
 
-If you only want to do simple inference using an existing model,
+__Inference__: If you only want to do simple inference using an existing model,
 [DefaultPredictor](../modules/engine.html#detectron2.engine.defaults.DefaultPredictor)
 is a wrapper around model that provides such basic functionality.
 It includes default behavior including model loading, preprocessing,
-and operates on single image rather than batches.
+and operates on single image rather than batches. See its documentation for usage.
+
+You can also run inference directly like this:
+```
+model.eval()
+with torch.no_grad():
+  outputs = model(inputs)
+```
 
 ### Model Input Format
 
@@ -61,9 +68,13 @@ The dict may contain the following keys:
 
 * "image": `Tensor` in (C, H, W) format. The meaning of channels are defined by `cfg.INPUT.FORMAT`.
   Image normalization, if any, will be performed inside the model using
-	`cfg.MODEL.PIXEL_{MEAN,STD}`.
+  `cfg.MODEL.PIXEL_{MEAN,STD}`.
+* "height", "width": the **desired** output height and width, which is not necessarily the same
+  as the height or width of the `image` field.
+  For example, the `image` field contains the resized image, if resize is used as a preprocessing step.
+  But you may want the outputs to be in **original** resolution.
 * "instances": an [Instances](../modules/structures.html#detectron2.structures.Instances)
-  object, with the following fields:
+  object for training, with the following fields:
   + "gt_boxes": a [Boxes](../modules/structures.html#detectron2.structures.Boxes) object storing N boxes, one for each instance.
   + "gt_classes": `Tensor` of long type, a vector of N labels, in range [0, num_categories).
   + "gt_masks": a [PolygonMasks](../modules/structures.html#detectron2.structures.PolygonMasks)
@@ -74,14 +85,10 @@ The dict may contain the following keys:
   object used only in Fast R-CNN style models, with the following fields:
   + "proposal_boxes": a [Boxes](../modules/structures.html#detectron2.structures.Boxes) object storing P proposal boxes.
   + "objectness_logits": `Tensor`, a vector of P scores, one for each proposal.
-* "height", "width": the **desired** output height and width, which is not necessarily the same
-  as the height or width of the `image` field.
-  For example, the `image` field contains the resized image, if resize is used as a preprocessing step.
-  But you may want the outputs to be in **original** resolution.
 
   If provided, the model will produce output in this resolution,
   rather than in the resolution of the `image` as input into the model. This is more efficient and accurate.
-* "sem_seg": `Tensor[int]` in (H, W) format. The semantic segmentation ground truth.
+* "sem_seg": `Tensor[int]` in (H, W) format. The semantic segmentation ground truth for training.
   Values represent category labels starting from 0.
 
 
