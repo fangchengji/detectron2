@@ -106,6 +106,9 @@ class FashionNetFPN(nn.Module):
         self.head = RetinaNetHead(cfg, feature_shapes)
         self.cls_head = FashionClassificationHead(cfg, feature_shapes)
 
+        # # multi task learning with uncertainty
+        # self.log_vars = nn.Parameter(torch.zeros(2), requires_grad=True)
+
         self.anchor_generator = build_anchor_generator(cfg, feature_shapes)
 
         # Matching and loss
@@ -218,13 +221,20 @@ class FashionNetFPN(nn.Module):
 
         if self.export_onnx:
             # skip the postprocess and return tuple of tensor(onnx needed!)
-            return detection_logits, detection_bbox_reg, classification_logits
+            return [detection_logits], [detection_bbox_reg], [classification_logits]
 
         anchors = self.anchor_generator(features)
 
         if self.training:
             losses = {}
             gt_classes, gt_anchors_reg_deltas = self.get_ground_truth(anchors, gt_instances, gt_classification)
+            # det_loss = self.detection_losses(
+            #         gt_classes,
+            #         gt_anchors_reg_deltas,
+            #         detection_logits,
+            #         detection_bbox_reg
+            #     )
+
             losses.update(
                 self.detection_losses(
                     gt_classes,
@@ -235,12 +245,20 @@ class FashionNetFPN(nn.Module):
             )
 
             gt_classification_classes = self.get_classification_ground_truth(gt_classification)
+            # cls_loss = self.classification_losses(
+            #         gt_classification_classes,
+            #         classification_logits
+            #     )
+
             losses.update(
                 self.classification_losses(
                     gt_classification_classes,
                     classification_logits
                 )
             )
+
+            # # multi task learning
+            # losses = self.multi_task_learning_loss([det_loss, cls_loss], self.log_vars)
 
             if self.vis_period > 0:
                 storage = get_event_storage()
@@ -268,6 +286,27 @@ class FashionNetFPN(nn.Module):
                 # r = self.filter_output_objects(category2, r)
                 processed_results.append({"instances": r, "classification": category2})
             return processed_results
+
+    def multi_task_learning_loss(self, multi_task_losses, uncertainty):
+        """
+        for multi task learning loss
+        Args:
+            multi_task_losses: separated multi task loss
+            uncertainty: uncertainty tensor for each task
+
+        Returns: losses with uncertainty
+
+        """
+        losses = {}
+        assert(len(multi_task_losses) == uncertainty.size()[:1], "The losses size is not equal to uncertainty!!")
+
+        alpha = torch.exp(-uncertainty)
+        for i, loss in enumerate(multi_task_losses):
+            for key, value in loss.items():
+                losses[key] = alpha[i] * value
+            losses[f"uncertainty_{i}"] = uncertainty[i]
+
+        return losses
 
     def detection_losses(self, gt_classes, gt_anchors_deltas, pred_class_logits, pred_anchor_deltas):
         """
@@ -433,11 +472,10 @@ class FashionNetFPN(nn.Module):
         """
         gt_classes = []
         gt_anchors_deltas = []
-        anchors = [Boxes.cat(anchors_i) for anchors_i in anchors]
-        # list[Tensor(R, 4)], one for each image
+        anchors = Boxes.cat(anchors)
 
-        for anchors_per_image, targets_per_image, classification_per_image in zip(anchors, targets, gt_classification):
-            match_quality_matrix = pairwise_iou(targets_per_image.gt_boxes, anchors_per_image)
+        for targets_per_image, classification_per_image in zip(targets, gt_classification):
+            match_quality_matrix = pairwise_iou(targets_per_image.gt_boxes, anchors)
             gt_matched_idxs, anchor_labels = self.matcher(match_quality_matrix)
 
             has_gt = len(targets_per_image) > 0
@@ -445,7 +483,7 @@ class FashionNetFPN(nn.Module):
                 # ground truth box regression
                 matched_gt_boxes = targets_per_image.gt_boxes[gt_matched_idxs]
                 gt_anchors_reg_deltas_i = self.box2box_transform.get_deltas(
-                    anchors_per_image.tensor, matched_gt_boxes.tensor
+                    anchors.tensor, matched_gt_boxes.tensor
                 )
 
                 gt_classes_i = targets_per_image.gt_classes[gt_matched_idxs]
@@ -455,7 +493,7 @@ class FashionNetFPN(nn.Module):
                 gt_classes_i[anchor_labels == -1] = -1
             else:
                 gt_classes_i = torch.zeros_like(gt_matched_idxs) + self.num_classes
-                gt_anchors_reg_deltas_i = torch.zeros_like(anchors_per_image.tensor)
+                gt_anchors_reg_deltas_i = torch.zeros_like(anchors.tensor)
 
             # only commodity and model data do object detection,
             # other type ignore all anchors

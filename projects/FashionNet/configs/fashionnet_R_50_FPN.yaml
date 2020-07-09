@@ -1,6 +1,6 @@
 MODEL:
   META_ARCHITECTURE: "FashionNetFPN"
-  #WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+#  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
   WEIGHTS: "./output/fashionnet_fpn_ft/model_final.pth"
   MASK_ON: False
   KEYPOINT_ON: False
@@ -52,11 +52,10 @@ SOLVER:
   MAX_ITER: 50000
 INPUT:
   MIN_SIZE_TRAIN: (640, 672, 704, 736, 768, 800)
-  #MIN_SIZE_TRAIN_SAMPLING: "choice"
 TEST:
   EVAL_PERIOD: 10000
   # export and visualize the error data.
   VIEW_ERROR: False
-OUTPUT_DIR: "./output/fashionnet_fpn_ft"
+OUTPUT_DIR: "./output/fashionnet_fpn_test"
 VERSION: 2
 

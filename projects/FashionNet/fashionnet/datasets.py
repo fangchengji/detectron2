@@ -487,10 +487,8 @@ def register_all_fashion(root="datasets"):
        )
 
 
-# Register the fashion dataset under "detectron2/datasets"
-# sudo mount --bind [your_absolute_dataset_path] [detectron2/datasets]
-_DATASETS_ROOT = "../../datasets"
-register_all_fashion(_DATASETS_ROOT)
+_root = os.getenv("DETECTRON2_DATASETS", "datasets")
+register_all_fashion(_root)
 
 
 if __name__ == "__main__":

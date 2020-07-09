@@ -3,6 +3,7 @@ from PIL import Image
 import numpy as np
 import shutil
 import os
+import random
 
 dataset = {
     "info": {},
@@ -127,12 +128,22 @@ dataset['categories2'].append({
     'name': "specification",
     'supercategory': "fashion"
 })
+dataset['categories2'].append({
+    'id': 5,
+    'name': "unknown",
+    'supercategory': "fashion"
+})
+# dataset['categories2'].append({
+#     'id': 0,
+#     'name': "ignore",
+#     'supercategory': "fashion"
+# })
 
 top_categories = (1, 2, 3, 4, 5, 6)
 down_categories = (7, 8, 9)
 whole_categories = (10, 11, 12, 13)
-categories2_name = ['unknown', 'commodity', 'model', 'detail', 'specification']
-part_name = ['unknown', 'top', 'down', 'whole']
+categories2_name = ['commodity', 'model', 'detail', 'specification', 'unknown']
+part_name = ['ignore', 'top', 'down', 'whole']
 total_landmark_nums = [25, 33, 31, 39, 15, 15, 10, 14, 8, 29, 37, 19, 19]
 scale_types = ['unknown', 'small', 'modest', 'large']
 
@@ -245,9 +256,10 @@ def deepfashion2noah(items, image_size):
         #print("cat {}, landmark_ratio {}, part {}".format(cat, landmark_ratio, part))
     return category2_id, part, toward
 
-start_id = 1
-num_images = 50000
+start_id = 150001
+num_images = 41960
 root_dir = '/Users/fangcheng.ji/Documents/datasets/deepfashion2/train/'
+#root_dir = '/Users/fangcheng.ji/Documents/datasets/deepfashion2/train/'
 
 sub_index = 0 # the index of ground truth instance
 sub_index2 = 0 # the index of annotations2 ground truth instance
@@ -256,7 +268,7 @@ for num in range(start_id, start_id + num_images):
     image_name = root_dir + 'image/' + str(num).zfill(6)+'.jpg'
     print("processing {}".format(image_name))
 
-    if (num>=0):
+    if (num>=0) and os.path.isfile(image_name):
         imag = Image.open(image_name)
         width, height = imag.size
         items = []
@@ -397,25 +409,28 @@ for num in range(start_id, start_id + num_images):
                         #'segmentation': seg,
                     })
 
-        category2_id, part, toward = deepfashion2noah(items, (width, height))
+        # category2_id, part, toward = deepfashion2noah(items, (width, height))
         # for test
-        if category2_id == 2:
-            new_path = image_name.replace('image', categories2_name[category2_id] + '/' + part_name[part])
-        else:
-            new_path = image_name.replace('image', categories2_name[category2_id])
-
-        shutil.move(image_name,  new_path)
+        # if category2_id == 2:
+        #     new_path = image_name.replace('image', categories2_name[category2_id] + '/' + part_name[part])
+        # else:
+        #     new_path = image_name.replace('image', categories2_name[category2_id])
+        #
+        # shutil.move(image_name,  new_path)
+        part = 0
+        toward = 0
 
         sub_index2 += 1
         dataset['annotations2'].append({
             'image_id': num,
             'id': sub_index2,
-            'category2_id': category2_id,
+            'category2_id': random.randint(1, 5),
             'part': part if part is not None else 0,
-            'toward': toward if toward is not None else 0
+            'toward': toward if toward is not None else 0,
+            'ignore': 1         # 1 means ignore the  result
         })
 
-json_name = root_dir + 'deepfashion2_coco_5w.json'
+json_name = root_dir + 'classification_ignore_19w.json'
 with open(json_name, 'w') as f:
   json.dump(dataset, f)
 

@@ -7,4 +7,7 @@ cd projects/FashionNet
 echo "The work directory should be detectron2/projects/FashionNet!!!!"
 echo "Now it is at `pwd`"
 
-CUDA_VISIBLE_DEVICES=2,3 python train_net.py --num-gpus 2 --config-file configs/fashionnet_R_50.yaml --dist-url auto
+CUDA_VISIBLE_DEVICES=3 python train_net.py --num-gpus 1 \
+  --config-file configs/fashionnet_R_50.yaml \
+  --dist-url auto \
+  --resume

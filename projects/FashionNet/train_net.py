@@ -17,6 +17,7 @@ from detectron2.utils.logger import setup_logger
 from fashionnet import add_fashionnet_config, FashionEvaluator, DatasetMapper
 from fashionnet import build_detection_train_loader, build_detection_test_loader
 
+
 class Trainer(DefaultTrainer):
     """
     We use the "DefaultTrainer" which contains pre-defined default logic for

@@ -79,9 +79,24 @@ if __name__ == "__main__":
     cfg = setup_cfg(args)
     input_names = ["input"]
     # output_names = ["detection_logits", "detection_bbox_reg", "classification_logits"]
-    output_names = [[f"logits_{i}", f"bbox_reg_{i}", f"ctrness_{i}"] for i in range(3, 8)]
-    output_names = list(itertools.chain(*output_names))
-    output_path = os.path.join(args.output, "fashionnet_fcos_v39_800.onnx")
+    # output_names = [[f"logits_{i}", f"bbox_reg_{i}", f"ctrness_{i}"] for i in range(3, 8)]
+    # output_names = list(itertools.chain(*output_names))
+    output_names = ["box_cls_3", "box_cls_4", "box_cls_5", "box_cls_6", "box_cls_7",
+                    "box_reg_3", "box_reg_4", "box_reg_5", "box_reg_6", "box_reg_7",
+                    "classification_logits"]
+    output_path = os.path.join(args.output, "fashionnet_e3_fpn_800.onnx")
+    dynamic_axes = {'input': {0: 'batch'},
+                    'box_cls_3': {0: 'batch'},
+                    'box_cls_4': {0: 'batch'},
+                    'box_cls_5': {0: 'batch'},
+                    'box_cls_6': {0: 'batch'},
+                    'box_cls_7': {0: 'batch'},
+                    'box_reg_3': {0: 'batch'},
+                    'box_reg_4': {0: 'batch'},
+                    'box_reg_5': {0: 'batch'},
+                    'box_reg_6': {0: 'batch'},
+                    'box_reg_7': {0: 'batch'},
+                    'classification_logits': {0: 'batch'}}
 
     # create a torch model
     torch_model = build_model(cfg)
@@ -100,13 +115,17 @@ if __name__ == "__main__":
     input_size = cfg.INPUT.SIZE
     dummy_in = torch.randn(1, 3, input_size[1], input_size[0], device=torch_model.device)
 
-    torch.onnx.export(
-        torch_model,
-        dummy_in,
-        output_path,
-        verbose=False,
-        input_names=input_names,
-        output_names=output_names)
+    with torch.no_grad():       # if not, it will calculate gradient, use a lot of memory
+        torch.onnx.export(
+            torch_model,
+            dummy_in,
+            output_path,
+            verbose=False,
+            input_names=input_names,
+            output_names=output_names,
+            # dynamic_axes=dynamic_axes,
+            opset_version=11,
+        )
 
     logger.info("Finished exporting onnx model to {}".format(output_path))
 

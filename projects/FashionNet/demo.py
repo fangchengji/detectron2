@@ -64,6 +64,25 @@ def get_parser():
     return parser
 
 
+def output_classification_result(image_path, predictions):
+    import torch
+    predictions = predictions.to(torch.device("cpu"))
+    result = image_path + ","
+    category_id = predictions.category_id if predictions.has("category_id") else None
+    category_score = predictions.category_score if predictions.has("category_score") else None
+    result += str(category_id.item()) + "," + str(category_score.item()) + ","
+
+    part = predictions.part if predictions.has("part") else None
+    part_score = predictions.part_score if predictions.has("part_score") else None
+    result += str(part.item()) + "," + str(part_score.item()) + ","
+
+    toward = predictions.toward if predictions.has("toward") else None
+    toward_score = predictions.toward_score if predictions.has("toward_score") else None
+    result += str(toward.item()) + "," + str(toward_score.item()) + '\n'
+
+    return result
+
+
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
     args = get_parser().parse_args()
@@ -73,8 +92,8 @@ if __name__ == "__main__":
 
     cfg = setup_cfg(args)
 
+    output_str = ""
     demo = VisualizationDemo(cfg)
-
     if args.input:
         if len(args.input) == 1:
             if os.path.isdir(args.input[0]):
@@ -87,6 +106,7 @@ if __name__ == "__main__":
             img = read_image(path, format="BGR")
             start_time = time.time()
             predictions, visualized_output = demo.run_on_image(img)
+            output_str += output_classification_result(path, predictions["classification"])
             logger.info(
                 "{}: detected {} instances in {:.2f}s".format(
                     path, len(predictions["instances"]), time.time() - start_time
@@ -153,3 +173,7 @@ if __name__ == "__main__":
             output_file.release()
         else:
             cv2.destroyAllWindows()
+
+    if args.output:
+        with open(args.output + "/result.txt", 'w') as f:
+            f.write(output_str)

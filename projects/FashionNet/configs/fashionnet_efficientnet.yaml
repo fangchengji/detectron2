@@ -1,6 +1,6 @@
 MODEL:
   META_ARCHITECTURE: "FashionNet"
-  WEIGHTS: "output/efficientnet/b0/model_final.pth"
+  WEIGHTS: "output/efficientnet/effnet_model_final.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   BACKBONE:
@@ -47,5 +47,5 @@ TEST:
   EVAL_PERIOD: 10000
   # export and visualize the error data.
   VIEW_ERROR: False
-OUTPUT_DIR: "./output/efficientnet/b0"
+OUTPUT_DIR: "./output/efficientnet"
 VERSION: 2

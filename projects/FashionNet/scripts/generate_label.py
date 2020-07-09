@@ -1,6 +1,7 @@
 import os
 import glob
 import json
+from collections import defaultdict
 
 root_dir = '/Users/fangcheng.ji/Documents/datasets/deepfashion2/validation'
 anno_file = os.path.join(root_dir, 'deepfashion2_coco_user_14k.json')
@@ -42,12 +43,9 @@ with open(anno_file, 'r') as f:
     print('length of annotations2 {}'.format(len(annotations2)))
 
     # build map
-    img2anno_idx = {}
+    img2anno_idx = defaultdict(list)
     for i, it in enumerate(temp["annotations"]):
-        if it['image_id'] not in img2anno_idx:
-            img2anno_idx[it['image_id']] = [i]
-        else:
-            img2anno_idx[it['image_id']].append(i)
+        img2anno_idx[it['image_id']].append(i)
     img2img_idx = {}
     for i, it in enumerate(temp["images"]):
         img2img_idx[it["id"]] = i
