@@ -87,10 +87,10 @@ class ClassificationNetwork(nn.Module):
             return cls_loss
         else:
             batch_num = cls_logits.size()[0]
-            pred_cls = self.inference(cls_logits)
+            pred_cls, scores = self.inference(cls_logits)
             results = []
             for i in range(batch_num):
-                results.append({"class_id": pred_cls[i]})
+                results.append({"class_id": pred_cls[i], "score": scores[i]})
             return results
 
     @torch.no_grad()
@@ -139,13 +139,11 @@ class ClassificationNetwork(nn.Module):
             pred_logits.sigmoid_().view(batch_nums, -1)
             values, indices = pred_logits.max(dim=1)
             indices[values < self.score_thresh] = -1
-            indices = indices.to(torch.float32)
-            result = torch.stack((indices, values), dim=1)
+            return indices, values
         elif self.activation == 'softmax':
             pred_logits = F.softmax(pred_logits, dim=1)
             values, indices = pred_logits.max(dim=1)
-            indices = indices.to(torch.float32)
-            result = torch.stack((indices, values), dim=1)
+            return values, indices
         else:
             raise Exception('Activation is not implemented!!')
 
