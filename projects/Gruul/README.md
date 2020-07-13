@@ -1,3 +1,4 @@
+Please follow the [INSTALL.md](../../INSTALL.md) to install the detectron2 first.
 ## Train Model
 ```shell script
 cd projects/Gruul
