@@ -600,19 +600,28 @@ class FashionNetFPN(nn.Module):
         Returns:
             results (List[Instances]): a list of #images elements.
         """
-        assert len(anchors) == len(image_sizes)
+        # assert len(anchors) == len(image_sizes)
         results = []
 
         box_cls = [permute_to_N_HWA_K(x, self.num_classes) for x in box_cls]
         box_delta = [permute_to_N_HWA_K(x, 4) for x in box_delta]
         # list[Tensor], one per level, each has shape (N, Hi x Wi x A, K or 4)
 
-        for img_idx, anchors_per_image in enumerate(anchors):
-            image_size = image_sizes[img_idx]
-            box_cls_per_image = [box_cls_per_level[img_idx] for box_cls_per_level in box_cls]
-            box_reg_per_image = [box_reg_per_level[img_idx] for box_reg_per_level in box_delta]
+        # for img_idx, anchors_per_image in enumerate(anchors):
+        #     image_size = image_sizes[img_idx]
+        #     box_cls_per_image = [box_cls_per_level[img_idx] for box_cls_per_level in box_cls]
+        #     box_reg_per_image = [box_reg_per_level[img_idx] for box_reg_per_level in box_delta]
+        #     results_per_image = self.inference_single_image(
+        #         box_cls_per_image, box_reg_per_image, anchors_per_image, tuple(image_size)
+        #     )
+        #     results.append(results_per_image)
+        # return results
+
+        for img_idx, image_size in enumerate(image_sizes):
+            pred_logits_per_image = [x[img_idx] for x in box_cls]
+            deltas_per_image = [x[img_idx] for x in box_delta]
             results_per_image = self.inference_single_image(
-                box_cls_per_image, box_reg_per_image, anchors_per_image, tuple(image_size)
+                pred_logits_per_image, deltas_per_image, anchors, tuple(image_size)
             )
             results.append(results_per_image)
         return results

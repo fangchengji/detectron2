@@ -1,7 +1,7 @@
 MODEL:
   META_ARCHITECTURE: "FashionNetFPN"
-#  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
-  WEIGHTS: "./output/fashionnet_fpn_ft/model_final.pth"
+  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+#  WEIGHTS: "./output/fashionnet_fpn_ft/model_final.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   BACKBONE:
@@ -32,7 +32,6 @@ DATASETS:
     "fashion_train_crop_5k",
     "shopee_fashion_train_6k",
     "shopee_fashion_train_3k",)
-
 #  TRAIN: ("shopee_fashion_train_6k", "shopee_fashion_train_3k",)
 #  TRAIN: ("fashion_classification_ignore_19w",)
   TEST: ("fashion_validation_merged_v1", "shopee_fashion_new_test",)
