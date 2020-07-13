@@ -60,10 +60,10 @@ def _load_image_folder_data_dicts(dir, class_to_idx):
             record["file_name"] = os.path.join(img_folder, img)
             if not folder.startswith('_'):
                 record["class"] = folder
-                record["class_id"] = torch.tensor(class_to_idx[folder])
+                record["class_id"] = torch.tensor([class_to_idx[folder]])
             else:
                 record["class"] = "negative"
-                record["class_id"] = torch.tensor(-1)
+                record["class_id"] = torch.tensor([-1])
 
             data_dicts.append(record)
 

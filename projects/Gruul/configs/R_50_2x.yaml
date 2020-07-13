@@ -1,7 +1,7 @@
 MODEL:
   META_ARCHITECTURE: "ClassificationNetwork"
-#  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
-  WEIGHTS: "output/R_50_2x/model_final.pth"
+  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+#  WEIGHTS: "output/R_50_2x/model_final.pth"
   BACKBONE:
     NAME: "build_resnet_backbone"
   RESNETS:
@@ -30,5 +30,5 @@ DATALOADER:
   ASPECT_RATIO_GROUPING: True
 TEST:
   EVAL_PERIOD: 1000
-OUTPUT_DIR: "output/R_50_2x_eval"
+OUTPUT_DIR: "output/R_50_2x_test"
 VERSION: 2
