@@ -21,8 +21,8 @@ See our [blog post](https://ai.facebook.com/blog/-detectron2-a-pytorch-based-mod
 to see more demos and learn about detectron2.
 
 ### What's Difference with FAIR
-* More Architecture: FCOS, EfficientDet
-* More Backbone: PAFPN(from PANet), VoVNet_v2, MobileNet_v2, EfficientNet, BIFPN_EfficientNet
+* More Architecture: FCOS, EfficientDet, ATSS, GFL
+* More Backbone: ResNeSt, PAFPN(from PANet), SEPC, VoVNet_v2, MobileNet_v2, EfficientNet 
 * More Loss: DIOU Loss, CIOU Loss 
 * More Layers: DIOU_NMS
 * ...
