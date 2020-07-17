@@ -294,32 +294,6 @@ class OneStageDetectorWithTTA(nn.Module):
 
         self.device = self.model.device
 
-    # @contextmanager
-    # def _turn_off_roi_heads(self, attrs):
-    #     """
-    #     Open a context where some heads in `model.roi_heads` are temporarily turned off.
-    #     Args:
-    #         attr (list[str]): the attribute in `model.roi_heads` which can be used
-    #             to turn off a specific head, e.g., "mask_on", "keypoint_on".
-    #     """
-    #     roi_heads = self.model.roi_heads
-    #     old = {}
-    #     for attr in attrs:
-    #         try:
-    #             old[attr] = getattr(roi_heads, attr)
-    #         except AttributeError:
-    #             # The head may not be implemented in certain ROIHeads
-    #             pass
-    #
-    #     if len(old.keys()) == 0:
-    #         yield
-    #     else:
-    #         for attr in old.keys():
-    #             setattr(roi_heads, attr, False)
-    #         yield
-    #         for attr in old.keys():
-    #             setattr(roi_heads, attr, old[attr])
-
     def _batch_inference(self, batched_inputs, detected_instances=None):
         """
         Execute inference on a list of inputs,
@@ -449,14 +423,3 @@ class OneStageDetectorWithTTA(nn.Module):
             )
             augmented_instances.append(aug_instances)
         return augmented_instances
-    #
-    # def _reduce_pred_masks(self, outputs, tfms):
-    #     # Should apply inverse transforms on masks.
-    #     # We assume only resize & flip are used. pred_masks is a scale-invariant
-    #     # representation, so we handle flip specially
-    #     for output, tfm in zip(outputs, tfms):
-    #         if any(isinstance(t, HFlipTransform) for t in tfm.transforms):
-    #             output.pred_masks = output.pred_masks.flip(dims=[3])
-    #     all_pred_masks = torch.stack([o.pred_masks for o in outputs], dim=0)
-    #     avg_pred_masks = torch.mean(all_pred_masks, dim=0)
-    #     return avg_pred_masks

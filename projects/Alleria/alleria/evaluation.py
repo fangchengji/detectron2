@@ -87,7 +87,7 @@ class WheatEvaluator(DatasetEvaluator):
         self._do_evaluation = "annotations" in self._coco_api.dataset
 
         # for visualization
-        self._visresult = False
+        self._visresult = cfg.TEST.VISUAL_OUTPUT
         self._id2anno = defaultdict(list)
         for anno in self._coco_api.dataset["annotations"]:
             ann = copy.deepcopy(anno)
@@ -277,13 +277,15 @@ class WheatEvaluator(DatasetEvaluator):
         ## Convert image from OpenCV BGR format to Matplotlib RGB format.
         #image = image[:, :, ::-1]
         visualizer = Visualizer(image, self._metadata)
-        # draw prediction
-        visualizer.draw_instance_predictions(pred)
-
+        # draw ground truth
         anno = {"annotations": self._id2anno[img_id] if len(self._id2anno[img_id]) > 0 else None}
-        visualizer.draw_dataset_dict(anno)
+        visualizer.draw_dataset_dict(anno, len(anno['annotations']) * ['r'])
+        # draw prediction
+        visualizer.draw_instance_predictions(pred, len(pred.pred_boxes) * ['g'])
 
         vis_output = visualizer.get_output()
+        if self._output_dir:
+            PathManager.mkdirs(self._output_dir)
         output_path = os.path.join(self._output_dir, img_path.split('/')[-1])
         vis_output.save(output_path)
 

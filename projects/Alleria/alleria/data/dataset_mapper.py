@@ -16,7 +16,8 @@ from detectron2.data import transforms as T
 from detectron2.structures.boxes import BoxMode
 from detectron2.data.dataset_mapper import DatasetMapper
 
-from .augmentation import get_albumentations_train_transforms, get_albumentations_test_transforms, cutout
+from .augmentation import get_albumentations_train_transforms, get_albumentations_test_transforms, \
+    cutout, random_affine, augment_hsv, augment_brightness_contrast
 
 
 class PlusDatasetMapper:
@@ -130,12 +131,19 @@ class PlusDatasetMapper:
                 image, dataset_dict = self.load_mixup(image, dataset_dict)
 
             # apply cutout
-            if random.random() < self.cutout_prob:
-                image, dataset_dict = cutout(image, dataset_dict)
+            # if random.random() < self.cutout_prob:
+            #     image, dataset_dict = cutout(image, dataset_dict)
 
         # apply albumentations transform
         if self.img_format == "BGR":
             image = image[..., ::-1]    # albumentations use rgb image as input
+        # one of [hsv, brightness_contrast]
+        # if self.is_train:
+        #     if random.random() < 0.5:
+        #         image = augment_hsv(image, 0.014, 0.68, 0.36)       # yolov5 hyp
+        #     else:
+        #         image = augment_brightness_contrast(image)
+
         augment_anno = {
             "image": image,
             "bboxes": [],
@@ -265,7 +273,7 @@ class PlusDatasetMapper:
 
         if self.img_format == "BGR":
             fill_val = (103, 116, 123)
-        else:   # rgb
+        else:  # rgb
             fill_val = (123, 116, 103)
 
         mosaic_img = np.full((h, w, 3), fill_val, dtype=np.uint8)  # base image with 4 tiles, BGR order
@@ -293,7 +301,7 @@ class PlusDatasetMapper:
 
             # Labels
             if len(labels[i]) > 0:
-                labels_i = labels[i]
+                labels_i = labels[i].copy()
                 # xywh to xyxy
                 labels_i[:, 1] += padw
                 labels_i[:, 2] += padh
@@ -314,6 +322,15 @@ class PlusDatasetMapper:
                     (mosaic_labels[:, 3] - mosaic_labels[:, 1]) * (mosaic_labels[:, 4] - mosaic_labels[:, 2]) > 0
                 )
             ]
+
+        # Augment
+        # mosaic_img, mosaic_labels = random_affine(mosaic_img,
+        #                                           mosaic_labels,
+        #                                           degrees=0.0,
+        #                                           translate=0.0,
+        #                                           scale=0.5,
+        #                                           shear=0.0,
+        #                                           border=-w // 2)  # border to remove
 
         # translate back to detectron2 format
         annos = []
@@ -338,7 +355,6 @@ class PlusDatasetMapper:
             "image_id": data_dicts[0]['image_id'],
             "annotations": annos
         }
-
         return mosaic_img, data_dict
 
     def load_mixup(self, image, data_dict):
@@ -362,7 +378,6 @@ class PlusDatasetMapper:
             "image_id": data_dicts[0]['image_id'],
             "annotations": annos
         }
-
         return mixup_image, data_dict
 
 

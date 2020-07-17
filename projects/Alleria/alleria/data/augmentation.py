@@ -9,6 +9,7 @@ import cv2
 import math
 
 import albumentations as A
+import albumentations.augmentations.functional as AF
 
 
 def get_albumentations_train_transforms():
@@ -19,7 +20,11 @@ def get_albumentations_train_transforms():
                 A.HueSaturationValue(hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=1.0),
                 A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=1.0),
             ], p=0.8),
-            A.CLAHE(p=0.3),           # internal logic is rgb order
+            A.OneOf([
+                A.RGBShift(p=1.0),
+                A.CLAHE(p=1.0),  # internal logic is rgb order
+                A.RandomGamma(p=1.0),
+            ], p=0.4),
             A.ToGray(p=0.01),
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
@@ -78,6 +83,12 @@ def augment_hsv(img, hgain=0.5, sgain=0.5, vgain=0.5):
     img_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val))).astype(dtype)
     img = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)  # no return needed
     return img
+
+
+def augment_brightness_contrast(img, brightness=0.2, contrast=0.2):
+    alpha = 1.0 + random.uniform(-contrast, contrast)
+    beta = 0.0 + random.uniform(-brightness, brightness)
+    return AF.brightness_contrast_adjust(img, alpha, beta, beta_by_max=True)
 
 
 # class Cutout(A.DualTransform):
@@ -217,26 +228,26 @@ def cutout(image, dataset_dict):
     return image, dataset_dict
 
 
-def random_affine(img, targets=(), degrees=10, translate=.1, scale=.1, shear=10, border=(0, 0)):
+def random_affine(img, targets=(), degrees=10, translate=.1, scale=.1, shear=10, border=0):
     # torchvision.transforms.RandomAffine(degrees=(-10, 10), translate=(.1, .1), scale=(.9, 1.1), shear=(-10, 10))
     # https://medium.com/uruvideo/dataset-augmentation-with-random-homographies-a8f4b44830d4
+    # targets = [cls, xyxy]
 
-    if targets is None:
-        targets = []
-    height = img.shape[0] + border[0] * 2
-    width = img.shape[1] + border[1] * 2
+    height = img.shape[0] + border * 2
+    width = img.shape[1] + border * 2
 
     # Rotation and Scale
     R = np.eye(3)
     a = random.uniform(-degrees, degrees)
     # a += random.choice([-180, -90, 0, 90])  # add 90deg rotations to small rotations
     s = random.uniform(1 - scale, 1 + scale)
+    # s = 2 ** random.uniform(-scale, scale)
     R[:2] = cv2.getRotationMatrix2D(angle=a, center=(img.shape[1] / 2, img.shape[0] / 2), scale=s)
 
     # Translation
     T = np.eye(3)
-    T[0, 2] = random.uniform(-translate, translate) * img.shape[1] + border[1]  # x translation (pixels)
-    T[1, 2] = random.uniform(-translate, translate) * img.shape[0] + border[0]  # y translation (pixels)
+    T[0, 2] = random.uniform(-translate, translate) * img.shape[0] + border  # x translation (pixels)
+    T[1, 2] = random.uniform(-translate, translate) * img.shape[1] + border  # y translation (pixels)
 
     # Shear
     S = np.eye(3)
@@ -245,12 +256,12 @@ def random_affine(img, targets=(), degrees=10, translate=.1, scale=.1, shear=10,
 
     # Combined rotation matrix
     M = S @ T @ R  # ORDER IS IMPORTANT HERE!!
-    if (border[0] != 0 or border[1] != 0) or (M != np.eye(3)).any():  # image changed
+    if (border != 0) or (M != np.eye(3)).any():  # image changed
         img = cv2.warpAffine(img, M[:2], dsize=(width, height), flags=cv2.INTER_LINEAR, borderValue=(114, 114, 114))
 
     # Transform label coordinates
     n = len(targets)
-    if n > 0:
+    if n:
         # warp points
         xy = np.ones((n * 4, 3))
         xy[:, :2] = targets[:, [1, 2, 3, 4, 1, 4, 3, 2]].reshape(n * 4, 2)  # x1y1, x2y2, x1y2, x2y1

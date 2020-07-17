@@ -24,17 +24,18 @@ from alleria.pseudo_label import pred_instances_to_coco_json, \
 WINDOW_NAME = "COCO detections"
 
 
-def setup_cfg(args):
+def setup_cfg(config_file, input_dir, output_dir):
     # load config from file and command-line arguments
     cfg = get_cfg()
     add_alleria_config(cfg)
-    cfg.merge_from_file(args.config_file)
-    cfg.merge_from_list(args.opts)
+    cfg.merge_from_file(config_file)
+    cfg.INPUT_DIR = input_dir
+    cfg.OUTPUT_DIR = output_dir
     # Set score_threshold for builtin models
-    cfg.MODEL.FCOS.INFERENCE_TH_TEST = args.confidence_threshold
-    cfg.MODEL.RETINANET.SCORE_THRESH_TEST = args.confidence_threshold
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = args.confidence_threshold
-    cfg.MODEL.PANOPTIC_FPN.COMBINE.INSTANCES_CONFIDENCE_THRESH = args.confidence_threshold
+    # cfg.MODEL.FCOS.INFERENCE_TH_TEST = args.confidence_threshold
+    # cfg.MODEL.RETINANET.SCORE_THRESH_TEST = args.confidence_threshold
+    # cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = args.confidence_threshold
+    # cfg.MODEL.PANOPTIC_FPN.COMBINE.INSTANCES_CONFIDENCE_THRESH = args.confidence_threshold
     cfg.freeze()
     return cfg
 
@@ -88,7 +89,7 @@ def format_result(image_id, predictions):
     return res
 
 
-def main(args, cfg, logger, pseudo_label=False):
+def main(cfg, logger, pseudo_label=False):
 
     # pseudo label
     pseudo_threshold = 0.4
@@ -103,13 +104,10 @@ def main(args, cfg, logger, pseudo_label=False):
 
     demo = VisualizationDemo(cfg)
     results = ["image_id,PredictionString\n"]
-    if args.input:
-        if len(args.input) == 1:
-            args.input = glob.glob(os.path.expanduser(args.input[0]))
-            assert args.input, "The input path(s) was not found"
-            # input < 10 doesn't do pseudo label
-            # pseudo_label = pseudo_label & (len(args.input) > 10)
-        for idx, path in tqdm.tqdm(enumerate(args.input), disable=not args.output):
+    if cfg.INPUT_DIR:
+        img_list = glob.glob(cfg.INPUT_DIR + "/*.jpg")
+        assert img_list, "The input path(s) was not found"
+        for idx, path in tqdm.tqdm(enumerate(img_list)):
             # use PIL, to be consistent with evaluation
             img = read_image(path, format="BGR")
             img_size = img.shape[:2]
@@ -139,18 +137,14 @@ def main(args, cfg, logger, pseudo_label=False):
                 )
             )
 
-            if args.output:
-                if os.path.isdir(args.output):
-                    assert os.path.isdir(args.output), args.output
-                    out_filename = os.path.join(args.output, os.path.basename(path))
-                else:
-                    assert len(args.input) == 1, "Please specify a directory with args.output"
-                    out_filename = args.output
-                visualized_output.save(out_filename)
+            # save image
+            # if os.path.isdir(cfg.OUTPUT_DIR):
+            #     out_filename = os.path.join(cfg.OUTPUT_DIR, os.path.basename(path))
+            # visualized_output.save(out_filename)
 
         if pseudo_label:
             # save pseudo label to json file
-            json_name = args.output + '/pseudo_label.json'
+            json_name = cfg.OUTPUT_DIR + '/pseudo_label.json'
             with open(json_name, 'w') as f:
                 json.dump(coco_annos, f)
 
@@ -160,41 +154,45 @@ def main(args, cfg, logger, pseudo_label=False):
             if "wheat_coco_pseudo" not in all_datasets:
                 register_pseudo_datasets(
                     "wheat_coco_pseudo",
-                    image_root=os.path.dirname(args.input[0]),
-                    json_file=args.output + "/pseudo_label.json"
+                    image_root=cfg.INPUT_DIR,
+                    json_file=json_name
                 )
             # set training cfg
-            set_pseudo_cfg(cfg, len(args.input), args.output)
+            set_pseudo_cfg(cfg, len(img_list), cfg.OUTPUT_DIR)
 
             # trainer
             trainer = PseudoTrainer(cfg)
             trainer.resume_or_load(resume=False)
             trainer.train()
         else:
-            with open('submission.csv', 'w') as f:
+            with open(cfg.OUTPUT_DIR + '/submission.csv', 'w') as f:
                 f.writelines(results)
 
 
 if __name__ == "__main__":
-    mp.set_start_method("spawn", force=True)
-    args = get_parser().parse_args()
+    #mp.set_start_method("spawn", force=True)
+    # args = get_parser().parse_args()
     setup_logger(name="fvcore")
     logger = setup_logger()
-    logger.info("Arguments: " + str(args))
+    # logger.info("Arguments: " + str(args))
 
-    cfg = setup_cfg(args)
+    config_file = "configs/qfl_atss_ensemble.yaml"
+    input_dir = "/data/fangcheng.ji/datasets/wheat/pseudo_test"
+    output_dir = "/data/fangcheng.ji/datasets/wheat/pseudo_test_out"
 
-    pseudo_label = True
+    cfg = setup_cfg(config_file, input_dir, output_dir)
+
+    pseudo_label = False
 
     if pseudo_label:
-        main(args, cfg, logger, pseudo_label=True)
+        main(cfg, logger, pseudo_label=True)
 
         # after training
         cfg.defrost()
-        cfg.MODEL.WEIGHTS = os.path.join(args.output, "model_final.pth")
+        cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, "model_final.pth")
         cfg.freeze()
 
-        main(args, cfg, logger, pseudo_label=True)
+        main(cfg, logger, pseudo_label=True)
 
     # run inference
-    main(args, cfg, logger, pseudo_label=False)
+    main(cfg, logger, pseudo_label=False)

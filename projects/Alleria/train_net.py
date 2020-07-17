@@ -29,8 +29,11 @@ from detectron2.engine import DefaultTrainer, default_argument_parser, default_s
 from detectron2.evaluation import (
     DatasetEvaluators,
     SemSegEvaluator,
+    DatasetEvaluator,
+    print_csv_format,
     verify_results,
 )
+
 # from detectron2.modeling import GeneralizedRCNNWithTTA
 from detectron2.utils.logger import setup_logger
 
@@ -39,6 +42,9 @@ from alleria.evaluation import WheatEvaluator
 from alleria.data.datasets import register_all_datasets
 from alleria.config import add_alleria_config
 from alleria.test_time_augmentation import OneStageDetectorWithTTA
+from alleria.ensemble_model import get_config, inference_ensemble_on_dataset
+
+# from alleria.apex_trainer import ApexTrainer     # doesn't support deformable conv yet
 
 
 class Trainer(DefaultTrainer):
@@ -102,6 +108,78 @@ class Trainer(DefaultTrainer):
         return res
 
     @classmethod
+    def test_with_ensemble(cls, cfg, model):
+        logger = logging.getLogger("detectron2.trainer")
+        # In the end of training, run an evaluation with TTA
+        # Only support some R-CNN models.
+        logger.info("Running inference with ensemble model ...")
+
+        models = [OneStageDetectorWithTTA(cfg, model)]
+        cfgs = [cfg]
+        assert cfg.TEST.ENSEMBLE.NUM - 1 == len(cfg.TEST.ENSEMBLE.CONFIGS), "ensemble nums should equal to configs!"
+        for f in cfg.TEST.ENSEMBLE.CONFIGS:
+            cfg_i = get_config(f)
+            model = cls.build_model(cfg_i)
+            DetectionCheckpointer(model, save_dir=cfg_i.OUTPUT_DIR).resume_or_load(
+                cfg_i.MODEL.WEIGHTS
+            )
+            models.append(OneStageDetectorWithTTA(cfg_i, model))
+            cfgs.append(cfg_i)
+
+        evaluators = [
+            cls.build_evaluator(
+                cfg, name, output_folder=os.path.join(cfg.OUTPUT_DIR, "inference_ensemble")
+            )
+            for name in cfg.DATASETS.TEST
+        ]
+
+        res = cls.test_multi_models(cfg, models, evaluators)
+        res = OrderedDict({k + "_ensemble": v for k, v in res.items()})
+        return res
+
+    @classmethod
+    def test_multi_models(cls, cfg, models, evaluators=None):
+        logger = logging.getLogger(__name__)
+        if isinstance(evaluators, DatasetEvaluator):
+            evaluators = [evaluators]
+        if evaluators is not None:
+            assert len(cfg.DATASETS.TEST) == len(evaluators), "{} != {}".format(
+                len(cfg.DATASETS.TEST), len(evaluators)
+            )
+
+        results = OrderedDict()
+        for idx, dataset_name in enumerate(cfg.DATASETS.TEST):
+            data_loader = cls.build_test_loader(cfg, dataset_name)
+            # When evaluators are passed in as arguments,
+            # implicitly assume that evaluators can be created before data_loader.
+            if evaluators is not None:
+                evaluator = evaluators[idx]
+            else:
+                try:
+                    evaluator = cls.build_evaluator(cfg, dataset_name)
+                except NotImplementedError:
+                    logger.warn(
+                        "No evaluator found. Use `DefaultTrainer.test(evaluators=)`, "
+                        "or implement its `build_evaluator` method."
+                    )
+                    results[dataset_name] = {}
+                    continue
+            results_i = inference_ensemble_on_dataset(models, data_loader, evaluator)
+            results[dataset_name] = results_i
+            if comm.is_main_process():
+                assert isinstance(
+                    results_i, dict
+                ), "Evaluator must return a dict on the main process. Got {} instead.".format(
+                    results_i
+                )
+                logger.info("Evaluation results for {} in csv format:".format(dataset_name))
+                print_csv_format(results_i)
+
+        if len(results) == 1:
+            results = list(results.values())[0]
+        return results
+
+    @classmethod
     def build_test_loader(cls, cfg, dataset_name):
         return build_detection_test_loader(cfg, dataset_name)
 
@@ -134,8 +212,9 @@ def main(args):
         DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
             cfg.MODEL.WEIGHTS, resume=args.resume
         )
-
-        if cfg.TEST.AUG.ENABLED:
+        if cfg.TEST.ENSEMBLE.ENABLED:
+            res = Trainer.test_with_ensemble(cfg, model)
+        elif cfg.TEST.AUG.ENABLED:
             res = Trainer.test_with_TTA(cfg, model)
         else:
             res = Trainer.test(cfg, model)

@@ -83,15 +83,15 @@ def set_pseudo_cfg(cfg, img_nums, output_dir):
     # need to skip the evaluation hook
     cfg.DATASETS.TEST = ("wheat_coco_pseudo",)
 
+    epoch = 10
     cfg.SOLVER.IMS_PER_BATCH = 4
 
-    epoch = 4
-
+    cfg.SOLVER.LR_SCHEDULER_NAME = "WarmupCosineLR"
     cfg.SOLVER.BASE_LR = 0.005
-    cfg.SOLVER.WARMUP_FACTOR = 0.00005
-    cfg.SOLVER.WARMUP_ITERS = 100
+    cfg.SOLVER.WARMUP_FACTOR = 0.005
+    cfg.SOLVER.WARMUP_ITERS = 200
     cfg.SOLVER.MAX_ITER = img_nums * epoch // cfg.SOLVER.IMS_PER_BATCH
-    cfg.SOLVER.STEPS = (int(0.66 * cfg.SOLVER.MAX_ITER), int(0.88 * cfg.SOLVER.MAX_ITER))
+    # cfg.SOLVER.STEPS = (int(0.66 * cfg.SOLVER.MAX_ITER), int(0.88 * cfg.SOLVER.MAX_ITER))
 
     cfg.SOLVER.CHECKPOINT_PERIOD = 5000
     cfg.OUTPUT_DIR = output_dir

@@ -1,0 +1,73 @@
+MODEL:
+  META_ARCHITECTURE: "OneStageDetector"
+#  WEIGHTS: "detectron2://ImageNetPretrained/FAIR/X-101-32x8d.pkl"
+#  WEIGHTS: "output/FCOS_MS_X_101_32x8d_dcnv2_2x.pth"
+  WEIGHTS: "output/qfl_atss_dcnv2_x101_fpn_3x_b8/best.pth"
+  MASK_ON: False
+  KEYPOINT_ON: False
+  PIXEL_STD: [57.375, 57.120, 58.395]
+  BACKBONE:
+    NAME: "build_fcos_resnet_fpn_backbone"
+  RESNETS:
+    DEPTH: 101
+    STRIDE_IN_1X1: False
+    NUM_GROUPS: 32
+    WIDTH_PER_GROUP: 8
+    DEFORM_ON_PER_STAGE: (False, False, True, True)
+    DEFORM_MODULATED: True
+    OUT_FEATURES: ["res3", "res4", "res5"]
+  FPN:
+    IN_FEATURES: ["res3", "res4", "res5"]
+  PROPOSAL_GENERATOR:
+    NAME: "QFLATSS"
+  ATSS:
+    NUM_CLASSES: 1
+    INFERENCE_TH: 0.40
+    NMS_TH: 0.5
+    POSITIVE_TYPE: 'ATSS' # how to select positves: ATSS (Ours) , SSC (FCOS), IoU (RetinaNet)
+    TOPK: 9 # topk for selecting candidate positive samples from each level
+    REGRESSION_TYPE: 'BOX' # regressing from a 'BOX' or a 'POINT'
+    POST_NMS_TOPK_TEST: 120
+    USE_DCN_IN_TOWER: True
+  ANCHOR_GENERATOR:
+    SIZES: [[64], [128], [256], [512], [1024]]  # One size for each in feature map 8S
+    ASPECT_RATIOS: [[1.0,]]  # Three aspect ratios (same for all in feature maps)
+    ANGLES: [[0,]]
+    OFFSET: 0.0
+DATASETS:
+  TRAIN: ("wheat_coco_train",)
+  TEST: ("wheat_coco_val",)
+DATALOADER:
+  MOSAIC_PROB: 0.33
+  MIXUP_PROB: 0.34
+  CUTOUT_PROB: 0.00
+SOLVER:
+  IMS_PER_BATCH: 8
+  BASE_LR: 0.01
+  WARMUP_FACTOR: 0.00125
+  WARMUP_ITERS: 800
+  STEPS: (12000, 16000)
+  MAX_ITER: 18000
+  CHECKPOINT_PERIOD: 2000
+INPUT:
+  CROP:
+    ENABLED: False
+  MIN_SIZE_TRAIN: (864, 896, 928, 960, 992, 1024)
+  MAX_SIZE_TEST: 1024
+  MIN_SIZE_TEST: 1024
+TEST:
+  VISUAL_OUTPUT: True
+  EVAL_PERIOD: 2000
+  ENSEMBLE:
+    ENABLED: True
+    NUM: 2
+    CONFIGS: ("configs/qfl_atss_RS_101_FPN_3x_b8.yaml",)
+  AUG:
+    ENABLED: True
+    MIN_SIZES: (1024,)
+    MAX_SIZE: 1024
+    FLIP: True
+    VERTICAL_FLIP: True
+OUTPUT_DIR: "output/qfl_atss_dcnv2_x101_fpn_3x_b8_eval"
+VERSION: 2
+

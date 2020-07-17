@@ -14,8 +14,11 @@ from detectron2.utils.visualizer import ColorMode, Visualizer
 from detectron2.modeling import build_model
 from detectron2.checkpoint import DetectionCheckpointer
 import detectron2.data.transforms as T
+from detectron2.config import get_cfg
 
 from .data.augmentation import get_albumentations_infer_transforms
+from .config import add_alleria_config
+from .boxes_fusion import boxes_fusion_single_image
 
 
 class DefaultPredictor:
@@ -131,6 +134,62 @@ class TTAPredictor(DefaultPredictor):
             return results
 
 
+class EnsemblePredictor:
+    def __init__(self, cfg):
+        assert cfg.TEST.ENSEMBLE.NUM - 1 == len(cfg.TEST.ENSEMBLE.CONFIGS), "ensemble nums should equal to configs!"
+        self.predictors = [TTAPredictor(cfg) if cfg.TEST.AUG.ENABLED else DefaultPredictor(cfg)]
+
+        if 'FCOS' in cfg.MODEL.PROPOSAL_GENERATOR.NAME:
+            self.topk_per_image = cfg.MODEL.FCOS.POST_NMS_TOPK_TEST
+            self.nms_threshold = cfg.MODEL.FCOS.NMS_TH
+        elif 'ATSS' in cfg.MODEL.PROPOSAL_GENERATOR.NAME:
+            self.topk_per_image = cfg.MODEL.ATSS.POST_NMS_TOPK_TEST
+            self.nms_threshold = cfg.MODEL.ATSS.NMS_TH
+        else:
+            raise ValueError("Not implemented TTA Arch")
+
+        # init predictors
+        for f in cfg.TEST.ENSEMBLE.CONFIGS:
+            cfg_i = self.get_config(f)
+            self.predictors.append(TTAPredictor(cfg_i) if cfg.TEST.AUG.ENABLED else DefaultPredictor(cfg_i))
+
+    def get_config(self, config_file):
+        cfg = get_cfg()
+        add_alleria_config(cfg)
+        cfg.merge_from_file(config_file)
+        cfg.freeze()
+        return cfg
+
+    def __call__(self, original_image):
+        results = []
+        for predictor in self.predictors:
+            results.append(predictor(original_image.copy()))
+        merged_instances = self.merge_multi_predictions(results, original_image.shape[:2])
+        return {"instances": merged_instances}
+
+    def merge_multi_predictions(self, outputs, image_shape):
+        all_boxes = []
+        all_scores = []
+        all_classes = []
+        for output in outputs:
+            # Need to inverse the transforms on boxes, to obtain results on original image
+            if isinstance(output, dict) and 'instances' in output:
+                output = output['instances']
+            all_boxes.append(output.pred_boxes.tensor)
+            all_scores.append(output.scores)
+            all_classes.append(output.pred_classes)
+        # all_boxes = torch.cat(all_boxes, dim=0)
+
+        merged_instances = boxes_fusion_single_image(
+            all_boxes, all_scores, all_classes, image_shape,
+            self.nms_threshold,
+            self.topk_per_image,
+            method="wbf",
+            device=all_boxes[0].device,
+        )
+        return merged_instances
+
+
 class VisualizationDemo(object):
     def __init__(self, cfg, instance_mode=ColorMode.IMAGE):
         """
@@ -146,10 +205,13 @@ class VisualizationDemo(object):
         self.cpu_device = torch.device("cpu")
         self.instance_mode = instance_mode
 
-        if cfg.TEST.AUG.ENABLED:
+        if cfg.TEST.ENSEMBLE.ENABLED:
+            self.predictor = EnsemblePredictor(cfg)
+        elif cfg.TEST.AUG.ENABLED:
             self.predictor = TTAPredictor(cfg)
         else:
             self.predictor = DefaultPredictor(cfg)
+
 
     def run_on_image(self, image):
         """

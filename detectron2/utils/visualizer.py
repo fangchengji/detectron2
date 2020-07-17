@@ -352,7 +352,7 @@ class Visualizer:
         )
         self._instance_mode = instance_mode
 
-    def draw_instance_predictions(self, predictions):
+    def draw_instance_predictions(self, predictions, assigned_colors=None):
         """
         Draw instance-level prediction results on an image.
 
@@ -382,7 +382,7 @@ class Visualizer:
             ]
             alpha = 0.8
         else:
-            colors = None
+            colors = assigned_colors
             alpha = 0.5
 
         if self._instance_mode == ColorMode.IMAGE_BW:
@@ -497,7 +497,7 @@ class Visualizer:
 
         return self.output
 
-    def draw_dataset_dict(self, dic):
+    def draw_dataset_dict(self, dic, assigned_colors=None):
         """
         Draw annotations/segmentaions in Detectron2 Dataset format.
 
@@ -522,7 +522,7 @@ class Visualizer:
             boxes = [BoxMode.convert(x["bbox"], x["bbox_mode"], BoxMode.XYXY_ABS) for x in annos]
 
             labels = [x["category_id"] for x in annos]
-            colors = None
+            colors = assigned_colors
             if self._instance_mode == ColorMode.SEGMENTATION and self.metadata.get("thing_colors"):
                 colors = [
                     self._jitter([x / 255 for x in self.metadata.thing_colors[c]]) for c in labels
