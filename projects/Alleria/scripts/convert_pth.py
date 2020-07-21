@@ -5,8 +5,8 @@
 
 import torch
 
-weight = '/data/fangcheng.ji/detectron2/projects/Alleria/output/fcos_dcnv2_x101_fpn_9x_clahe/model_final.pth'
-out = '/data/fangcheng.ji/detectron2/projects/Alleria/output/fcos_dcnv2_x101_fpn_9x_clahe/best.pth'
+weight = '/data/fangcheng.ji/detectron2/projects/Alleria/output/qfl_atss_RS_101_fpn_3x_b8_anchor6/model_final.pth'
+out = '/data/fangcheng.ji/detectron2/projects/Alleria/output/qfl_atss_RS_101_fpn_3x_b8_anchor6/best.pth'
 
 checkpoint = torch.load(weight)
 # state_dict = checkpoint['model']

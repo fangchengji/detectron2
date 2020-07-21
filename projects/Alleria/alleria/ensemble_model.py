@@ -82,7 +82,7 @@ def inference_ensemble_on_dataset(models, data_loader, evaluator):
                 merged_instances = merge_multi_predictions(
                     out_i,
                     (inputs[i]['height'], inputs[i]['width']),
-                    nms_threshold=0.5,
+                    nms_threshold=0.6,
                 )
                 res.append({"instances": merged_instances})
 

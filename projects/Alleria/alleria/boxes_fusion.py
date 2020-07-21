@@ -73,7 +73,7 @@ def boxes_fusion_single_image(
         boxes, scores, classes = weighted_boxes_fusion(
             boxes, scores, classes,
             # weights=weights,
-            iou_thr=nms_thresh + 0.1,    # wbf higher than nms performance better
+            iou_thr=nms_thresh,    # wbf higher than nms performance better
         )
 
     if topk_per_image >= 0:

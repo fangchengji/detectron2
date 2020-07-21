@@ -21,6 +21,7 @@ def add_alleria_config(cfg):
     # output prediction and ground truth to image
     _C.TEST.VISUAL_OUTPUT = False
 
+    _C.TEST.AUG.NMS_TH = 0.6
     # ensemble multi model
     _C.TEST.ENSEMBLE = CN()
     _C.TEST.ENSEMBLE.ENABLED = False

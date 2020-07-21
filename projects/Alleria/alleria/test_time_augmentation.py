@@ -283,14 +283,7 @@ class OneStageDetectorWithTTA(nn.Module):
         self.tta_mapper = tta_mapper
         self.batch_size = batch_size
 
-        if 'FCOS' in cfg.MODEL.PROPOSAL_GENERATOR.NAME:
-            self.topk_per_image = self.cfg.MODEL.FCOS.POST_NMS_TOPK_TEST
-            self.nms_threshold = self.cfg.MODEL.FCOS.NMS_TH
-        elif 'ATSS' in cfg.MODEL.PROPOSAL_GENERATOR.NAME:
-            self.topk_per_image = self.cfg.MODEL.ATSS.POST_NMS_TOPK_TEST
-            self.nms_threshold = self.cfg.MODEL.ATSS.NMS_TH
-        else:
-            raise ValueError("Not implemented TTA Arch")
+        self.nms_threshold = cfg.TEST.AUG.NMS_TH
 
         self.device = self.model.device
 
@@ -383,7 +376,6 @@ class OneStageDetectorWithTTA(nn.Module):
         merged_instances = boxes_fusion_single_image(
             all_boxes, all_scores, all_classes, shape_hw,
             self.nms_threshold,
-            self.topk_per_image,
             method="wbf",
             device=self.device,
         )
