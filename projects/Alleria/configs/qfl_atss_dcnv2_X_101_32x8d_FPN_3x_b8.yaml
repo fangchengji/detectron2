@@ -35,7 +35,7 @@ MODEL:
     ANGLES: [[0,]]
     OFFSET: 0.0
 DATASETS:
-  TRAIN: ("wheat_coco_train","wheat_coco_val")
+  TRAIN: ("wheat_coco_train",)
   TEST: ("wheat_coco_val",)
 DATALOADER:
   MOSAIC_PROB: 0.33
