@@ -14,11 +14,12 @@ from detectron2.data.detection_utils import read_image
 from detectron2.utils.logger import setup_logger
 from detectron2.data import DatasetCatalog
 
-from alleria.predictor import VisualizationDemo
+#from alleria.predictor import VisualizationDemo
+from alleria.predictor import TTAPredictor
 from alleria.config import add_alleria_config
 from alleria.pseudo_label import pred_instances_to_coco_json, \
     register_pseudo_datasets, set_pseudo_cfg, PseudoTrainer
-
+from alleria.ensemble_model import merge_multi_predictions
 
 # constants
 WINDOW_NAME = "COCO detections"
@@ -89,8 +90,7 @@ def format_result(image_id, predictions):
     return res
 
 
-def main(cfg, logger, pseudo_label=False):
-
+def inference(cfgs, logger, pseudo_label=False):
     # pseudo label
     pseudo_threshold = 0.4
     coco_annos = {
@@ -101,31 +101,40 @@ def main(cfg, logger, pseudo_label=False):
         "categories": [{"id": 1, "name": "wheat", "supercategory": "wheat", "skeleton": []}],
     }
     instance_id = 0
+    predictors = []
+    for cfg in cfgs:
+        predictors.append(TTAPredictor(cfg))
 
-    demo = VisualizationDemo(cfg)
     results = ["image_id,PredictionString\n"]
-    if cfg.INPUT_DIR:
-        img_list = glob.glob(cfg.INPUT_DIR + "/*.jpg")
+    if cfgs[0].INPUT_DIR:
+        img_list = glob.glob(cfgs[0].INPUT_DIR + "/*.jpg")
         assert img_list, "The input path(s) was not found"
         for idx, path in tqdm.tqdm(enumerate(img_list)):
             # use PIL, to be consistent with evaluation
             img = read_image(path, format="BGR")
             img_size = img.shape[:2]
             start_time = time.time()
-            predictions, visualized_output = demo.run_on_image(img)
+            predictions = []
+            for predictor in predictors:
+                predictions.append(predictor(img))
+
+            # wbf
+            merged_boxes = merge_multi_predictions(predictions, img_size, nms_threshold=0.6)
+            predictions = {"instances": merged_boxes}
 
             # output result
             if not pseudo_label:
                 result = format_result(os.path.basename(path).split('.')[0], predictions)
                 results.append(result)
             else:
-                instances = predictions["instances"].to('cpu')
-                img_info, annos, instance_id = pred_instances_to_coco_json(
-                    instances, path, idx, instance_id, img_size, pseudo_threshold
-                )
-                if img_info is not None and annos is not None:
-                    coco_annos["images"].append(img_info)
-                    coco_annos["annotations"].extend(annos)
+                if 'instances' in predictions:
+                    instances = predictions["instances"].to('cpu')
+                    img_info, annos, instance_id = pred_instances_to_coco_json(
+                        instances, path, idx, instance_id, img_size, pseudo_threshold
+                    )
+                    if img_info is not None and annos is not None:
+                        coco_annos["images"].append(img_info)
+                        coco_annos["annotations"].extend(annos)
 
             logger.info(
                 "{}: {} in {:.2f}s".format(
@@ -137,36 +146,36 @@ def main(cfg, logger, pseudo_label=False):
                 )
             )
 
-            # save image
-            # if os.path.isdir(cfg.OUTPUT_DIR):
-            #     out_filename = os.path.join(cfg.OUTPUT_DIR, os.path.basename(path))
-            # visualized_output.save(out_filename)
-
         if pseudo_label:
             # save pseudo label to json file
-            json_name = cfg.OUTPUT_DIR + '/pseudo_label.json'
+            json_name = cfgs[0].OUTPUT_DIR + '/pseudo_label.json'
             with open(json_name, 'w') as f:
                 json.dump(coco_annos, f)
-
-            # train
-            # data prepare
-            all_datasets = DatasetCatalog.list()
-            if "wheat_coco_pseudo" not in all_datasets:
-                register_pseudo_datasets(
-                    "wheat_coco_pseudo",
-                    image_root=cfg.INPUT_DIR,
-                    json_file=json_name
-                )
-            # set training cfg
-            set_pseudo_cfg(cfg, len(img_list), cfg.OUTPUT_DIR)
-
-            # trainer
-            trainer = PseudoTrainer(cfg)
-            trainer.resume_or_load(resume=False)
-            trainer.train()
         else:
-            with open(cfg.OUTPUT_DIR + '/submission.csv', 'w') as f:
+            with open(cfgs[0].OUTPUT_DIR + '/submission.csv', 'w') as f:
                 f.writelines(results)
+
+def pseudo_label_train(cfg, out_folder):
+    # data prepare
+    all_datasets = DatasetCatalog.list()
+    if "wheat_coco_pseudo" not in all_datasets:
+        register_pseudo_datasets(
+            "wheat_coco_pseudo",
+            image_root=cfg.INPUT_DIR,
+            json_file=cfg.OUTPUT_DIR + '/pseudo_label.json'
+        )
+    # set training cfg
+    if cfg.INPUT_DIR:
+        img_list = glob.glob(cfg.INPUT_DIR + "/*.jpg")
+    out_dir = os.path.join(cfg.OUTPUT_DIR, out_folder)
+    if not os.path.exists(out_dir):
+        os.mkdirs(out_dir)
+    set_pseudo_cfg(cfg, len(img_list), os.path.join(cfg.OUTPUT_DIR, out_folder))
+
+    # trainer
+    trainer = PseudoTrainer(cfg)
+    trainer.resume_or_load(resume=False)
+    trainer.train()
 
 
 if __name__ == "__main__":
@@ -176,23 +185,29 @@ if __name__ == "__main__":
     logger = setup_logger()
     # logger.info("Arguments: " + str(args))
 
-    config_file = "configs/qfl_atss_ensemble.yaml"
+    config_file1 = "configs/qfl_atss_ensemble.yaml"
+    config_file2 = "configs/qfl_atss_RS_101_FPN_3x_b8_anchor6.yaml"
+
     input_dir = "/data/fangcheng.ji/datasets/wheat/pseudo_test"
     output_dir = "/data/fangcheng.ji/datasets/wheat/pseudo_test_out"
 
-    cfg = setup_cfg(config_file, input_dir, output_dir)
+    cfg1 = setup_cfg(config_file1, input_dir, output_dir)
+    cfg2 = setup_cfg(config_file2, input_dir, output_dir)
+    cfgs = [cfg1, cfg2]
 
     pseudo_label = False
 
     if pseudo_label:
-        main(cfg, logger, pseudo_label=True)
+        inference(cfgs, logger, pseudo_label=True)
+
+        pseudo_label_train(cfgs[0], out_folder="model0")
+        pseudo_label_train(cfgs[1], out_folder="model1")
 
         # after training
-        cfg.defrost()
-        cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, "model_final.pth")
-        cfg.freeze()
-
-        main(cfg, logger, pseudo_label=True)
+        for i, cfg in enumerate(cfgs):
+            cfgs[i].defrost()
+            cfgs[i].MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, "model_final.pth")
+            cfgs[i].freeze()
 
     # run inference
-    main(cfg, logger, pseudo_label=False)
+    inference(cfgs, logger, pseudo_label=False)

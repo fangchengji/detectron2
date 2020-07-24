@@ -1,8 +1,8 @@
 MODEL:
   META_ARCHITECTURE: "OneStageDetector"
 #  WEIGHTS: "detectron2://ImageNetPretrained/FAIR/X-101-32x8d.pkl"
-#  WEIGHTS: "output/FCOS_MS_X_101_32x8d_dcnv2_2x.pth"
-  WEIGHTS: "output/qfl_atss_dcnv2_x101_fpn_3x_b8/best.pth"
+  WEIGHTS: "output/FCOS_MS_X_101_32x8d_dcnv2_2x.pth"
+#  WEIGHTS: "output/qfl_atss_dcnv2_x101_fpn_3x_b8/best.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   PIXEL_STD: [57.375, 57.120, 58.395]
@@ -35,7 +35,7 @@ MODEL:
     ANGLES: [[0,]]
     OFFSET: 0.0
 DATASETS:
-  TRAIN: ("wheat_coco_train",)
+  TRAIN: ("wheat_coco_train","wheat_coco_val")
   TEST: ("wheat_coco_val",)
 DATALOADER:
   MOSAIC_PROB: 0.33
@@ -64,6 +64,6 @@ TEST:
     MAX_SIZE: 1024
     FLIP: True
     VERTICAL_FLIP: True
-OUTPUT_DIR: "output/qfl_atss_dcnv2_x101_fpn_3x_b8_eval"
+OUTPUT_DIR: "output/qfl_atss_dcnv2_x101_fpn_3x_b8_all"
 VERSION: 2
 

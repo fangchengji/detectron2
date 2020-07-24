@@ -106,7 +106,7 @@ class TTAPredictor(DefaultPredictor):
         from .test_time_augmentation import OneStageDetectorWithTTA
 
         # self.tta_mapper = DatasetMapperTTA(cfg)
-        self.meta_arch = OneStageDetectorWithTTA(cfg, self.model)
+        self.meta_arch = OneStageDetectorWithTTA(cfg, self.model, batch_size=6)
 
     def __call__(self, original_image):
         with torch.no_grad():
