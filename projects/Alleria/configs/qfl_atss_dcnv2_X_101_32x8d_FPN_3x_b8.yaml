@@ -60,7 +60,7 @@ TEST:
   EVAL_PERIOD: 2000
   AUG:
     ENABLED: True
-    MIN_SIZES: (1024, 1216)
+    MIN_SIZES: (1024,)
     MAX_SIZE: 1024
     FLIP: True
     VERTICAL_FLIP: True

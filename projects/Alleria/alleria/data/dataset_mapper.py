@@ -125,10 +125,13 @@ class PlusDatasetMapper:
         prob = rand_range()
         if self.is_train:
             # mosaic and mixup should only apply one
-            if prob <= self.mosaic_prob:
-                image, dataset_dict = self.load_mosaic(image, dataset_dict)
-            elif prob <= self.mixup_prob:
-                image, dataset_dict = self.load_mixup(image, dataset_dict)
+            try:
+                if prob <= self.mosaic_prob:
+                    image, dataset_dict = self.load_mosaic(image, dataset_dict)
+                elif prob <= self.mixup_prob:
+                    image, dataset_dict = self.load_mixup(image, dataset_dict)
+            except:
+                print("mosaic or mixup augmentation error!! ")
 
             # apply cutout
             # if random.random() < self.cutout_prob:
@@ -369,16 +372,19 @@ class PlusDatasetMapper:
             if "annotations" in data_dict:
                 annos.extend(data_dict["annotations"].copy())
 
-        mixup_image = ((images[0].astype(np.float32) + images[1].astype(np.float32)) / 2).astype(np.uint8)
+        try:
+            mixup_image = ((images[0].astype(np.float32) + images[1].astype(np.float32)) / 2).astype(np.uint8)
 
-        data_dict = {
-            "file_name": data_dicts[0]['file_name'],
-            "height": data_dicts[0]['width'],
-            "width": data_dicts[0]['height'],
-            "image_id": data_dicts[0]['image_id'],
-            "annotations": annos
-        }
-        return mixup_image, data_dict
+            data_dict = {
+                "file_name": data_dicts[0]['file_name'],
+                "height": data_dicts[0]['width'],
+                "width": data_dicts[0]['height'],
+                "image_id": data_dicts[0]['image_id'],
+                "annotations": annos
+            }
+            return mixup_image, data_dict
+        except:
+            return images[0].astype(np.uint8), data_dicts[0] 
 
 
 def rand_range(low=1.0, high=None, size=None):

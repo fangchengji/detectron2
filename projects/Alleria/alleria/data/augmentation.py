@@ -20,12 +20,12 @@ def get_albumentations_train_transforms():
                 A.HueSaturationValue(hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=1.0),
                 A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=1.0),
             ], p=0.8),
-            # A.OneOf([
-            #     A.RGBShift(p=1.0),
-            #     A.CLAHE(p=1.0),  # internal logic is rgb order
-            #     A.RandomGamma(p=1.0),
-            # ], p=0.4),
-            A.CLAHE(p=0.3),
+            A.OneOf([
+                A.RGBShift(p=1.0),
+                A.CLAHE(p=1.0),  # internal logic is rgb order
+                A.RandomGamma(p=1.0),
+            ], p=0.4),
+            # A.CLAHE(p=0.3),
             A.ToGray(p=0.01),
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
