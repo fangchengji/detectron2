@@ -15,7 +15,7 @@ from detectron2.utils.logger import setup_logger
 from detectron2.data import DatasetCatalog
 
 #from alleria.predictor import VisualizationDemo
-from alleria.predictor import TTAPredictor
+from alleria.predictor import TTAPredictor, VisualizationTool
 from alleria.config import add_alleria_config
 from alleria.pseudo_label import pred_instances_to_coco_json, \
     register_pseudo_datasets, set_pseudo_cfg, PseudoTrainer
@@ -101,6 +101,10 @@ def inference(cfgs, logger, pseudo_label=False):
         "categories": [{"id": 1, "name": "wheat", "supercategory": "wheat", "skeleton": []}],
     }
     instance_id = 0
+
+    vis_result = False
+    vis_tool = VisualizationTool(cfgs[0])
+
     predictors = []
     for cfg in cfgs:
         predictors.append(TTAPredictor(cfg))
@@ -145,6 +149,10 @@ def inference(cfgs, logger, pseudo_label=False):
                     time.time() - start_time,
                 )
             )
+
+            if vis_result:
+                vis_img = vis_tool(img, predictions)
+                vis_img.save(os.path.join(cfgs[0].OUTPUT_DIR, os.path.basename(path)))
 
         if pseudo_label:
             # save pseudo label to json file

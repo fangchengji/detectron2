@@ -243,3 +243,24 @@ class VisualizationDemo(object):
 
         return predictions, vis_output
 
+
+class VisualizationTool:
+    def __init__(self, cfg, instance_mode=ColorMode.IMAGE):
+        self.metadata = MetadataCatalog.get(
+            cfg.DATASETS.TEST[0] if len(cfg.DATASETS.TEST) else "__unused"
+        )
+        self.cpu_device = torch.device("cpu")
+        self.instance_mode = instance_mode
+    
+    def __call__(self, image, predictions):
+        vis_output = None
+
+        # Convert image from OpenCV BGR format to Matplotlib RGB format.
+        image = image[:, :, ::-1]
+        visualizer = Visualizer(image, self.metadata, instance_mode=self.instance_mode)
+
+        if "instances" in predictions:
+            instances = predictions["instances"].to(self.cpu_device)
+            vis_output = visualizer.draw_instance_predictions(predictions=instances)
+
+        return vis_output
