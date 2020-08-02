@@ -12,6 +12,7 @@ import math
 from collections import namedtuple
 from functools import partial
 from torch.utils import model_zoo
+import fvcore.nn.weight_init as weight_init
 
 from detectron2.modeling.backbone import Backbone
 from detectron2.modeling.backbone.build import BACKBONE_REGISTRY
@@ -66,7 +67,7 @@ class MBConvBlock(nn.Module):
         if self._block_args.expand_ratio != 1:
             self._expand_conv = Conv2d(in_channels=inp, out_channels=oup, kernel_size=1, bias=False)
             # self._bn0 = nn.BatchNorm2d(num_features=oup, momentum=self._bn_mom, eps=self._bn_eps)
-            self._bn0 = get_norm(norm, oup)
+            self._bn0 = get_norm(norm, oup, momentum=0.01, eps=1e-3)
 
         # Depthwise convolution phase
         k = self._block_args.kernel_size
@@ -75,7 +76,7 @@ class MBConvBlock(nn.Module):
             in_channels=oup, out_channels=oup, groups=oup,  # groups makes it depthwise
             kernel_size=k, stride=s, bias=False)
         # self._bn1 = nn.BatchNorm2d(num_features=oup, momentum=self._bn_mom, eps=self._bn_eps)
-        self._bn1 = get_norm(norm, oup)
+        self._bn1 = get_norm(norm, oup, momentum=0.01, eps=1e-3)
 
         # Squeeze and Excitation layer, if desired
         if self.has_se:
@@ -87,12 +88,13 @@ class MBConvBlock(nn.Module):
         final_oup = self._block_args.output_filters
         self._project_conv = Conv2d(in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False)
         # self._bn2 = nn.BatchNorm2d(num_features=final_oup, momentum=self._bn_mom, eps=self._bn_eps)
-        self._bn2 = get_norm(norm, final_oup)
+        self._bn2 = get_norm(norm, final_oup, momentum=0.01, eps=1e-3)
         self._swish = MemoryEfficientSwish()
 
         # Dropout
-        if dropout_rate is not None:
-            self._dropout = nn.Dropout2d(dropout_rate, inplace=True)
+        self._drop_rate = dropout_rate
+        # if dropout_rate is not None:
+        #     self._dropout = nn.Dropout2d(dropout_rate, inplace=True)
 
     def forward(self, inputs):
         """
@@ -124,10 +126,10 @@ class MBConvBlock(nn.Module):
         # Skip connection and drop connect
         input_filters, output_filters = self._block_args.input_filters, self._block_args.output_filters
         if self.id_skip and self._block_args.stride == 1 and input_filters == output_filters:
-            # if drop_connect_rate:
-            #     x = drop_connect(x, p=drop_connect_rate, training=self.training)
-            if self.training and hasattr(self, '_dropout'):
-                x = self._dropout(x)
+            if self._drop_rate is not None:
+                x = drop_connect(x, p=self._drop_rate, training=self.training)
+            # if self.training and hasattr(self, '_dropout'):
+            #     x = self._dropout(x)
             x = x + inputs  # skip connection
         return x
 
@@ -174,7 +176,7 @@ class EfficientNet(Backbone):
         out_channels = round_filters(32, self._global_params)  # number of output channels
         self._conv_stem = Conv2d(in_channels, out_channels, kernel_size=3, stride=2, bias=False)
         # self._bn0 = nn.BatchNorm2d(num_features=out_channels, momentum=bn_mom, eps=bn_eps)
-        self._bn0 = get_norm(norm, out_channels)
+        self._bn0 = get_norm(norm, out_channels, momentum=0.01, eps=1e-3)
 
         self._out_feature_strides = {"stem": 2}
         self._out_feature_channels = {"stem": out_channels}
@@ -232,7 +234,7 @@ class EfficientNet(Backbone):
             out_channels = round_filters(1280, self._global_params)
             self._conv_head = Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
             # self._bn1 = nn.BatchNorm2d(num_features=out_channels, momentum=bn_mom, eps=bn_eps)
-            self._bn1 = get_norm(norm, out_channels)
+            self._bn1 = get_norm(norm, out_channels, momentum=0.01, eps=1e-3)
 
             # Final linear layer
             self._avg_pooling = nn.AdaptiveAvgPool2d(1)
@@ -634,7 +636,6 @@ class Conv2dStaticSamePadding(nn.Module):
     created by Zylo117
     The real keras/tensorflow conv2d with same padding
     """
-
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, bias=True, groups=1, dilation=1, **kwargs):
         super().__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride,
@@ -653,22 +654,12 @@ class Conv2dStaticSamePadding(nn.Module):
         elif len(self.kernel_size) == 1:
             self.kernel_size = [self.kernel_size[0]] * 2
 
-        # init weight
-        # nn.init.xavier_normal_(self.conv.weight)
-        # if self.conv.bias is not None:  # pyre-ignore
-        #     nn.init.constant_(self.conv.bias, 0)
-
     def forward(self, x):
         h, w = x.shape[-2:]
-
-        h_step = math.ceil(w / self.stride[1])
-        v_step = math.ceil(h / self.stride[0])
-        h_cover_len = self.stride[1] * (h_step - 1) + 1 + (self.kernel_size[1] - 1)
-        v_cover_len = self.stride[0] * (v_step - 1) + 1 + (self.kernel_size[0] - 1)
-
-        extra_h = h_cover_len - w
-        extra_v = v_cover_len - h
-
+        
+        extra_h = (math.ceil(w / self.stride[1]) - 1) * self.stride[1] - w + self.kernel_size[1]
+        extra_v = (math.ceil(h / self.stride[0]) - 1) * self.stride[0] - h + self.kernel_size[0]
+        
         left = extra_h // 2
         right = extra_h - left
         top = extra_v // 2
@@ -678,6 +669,74 @@ class Conv2dStaticSamePadding(nn.Module):
 
         x = self.conv(x)
         return x
+
+
+class MaxPool2dStaticSamePadding(nn.Module):
+    """
+    created by Zylo117
+    The real keras/tensorflow MaxPool2d with same padding
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.pool = nn.MaxPool2d(*args, **kwargs)
+        self.stride = self.pool.stride
+        self.kernel_size = self.pool.kernel_size
+
+        if isinstance(self.stride, int):
+            self.stride = [self.stride] * 2
+        elif len(self.stride) == 1:
+            self.stride = [self.stride[0]] * 2
+
+        if isinstance(self.kernel_size, int):
+            self.kernel_size = [self.kernel_size] * 2
+        elif len(self.kernel_size) == 1:
+            self.kernel_size = [self.kernel_size[0]] * 2
+
+    def forward(self, x):
+        h, w = x.shape[-2:]
+        
+        extra_h = (math.ceil(w / self.stride[1]) - 1) * self.stride[1] - w + self.kernel_size[1]
+        extra_v = (math.ceil(h / self.stride[0]) - 1) * self.stride[0] - h + self.kernel_size[0]
+
+        left = extra_h // 2
+        right = extra_h - left
+        top = extra_v // 2
+        bottom = extra_v - top
+
+        x = F.pad(x, [left, right, top, bottom])
+
+        x = self.pool(x)
+        return x
+
+
+class EffLastLevelP6P7(Backbone):
+    def __init__(self, in_channels, out_channels, in_feature="p5", norm="BN"):
+        super().__init__()
+
+        self.p6 = nn.Sequential(
+            Conv2dStaticSamePadding(in_channels, out_channels, 1),
+            # nn.BatchNorm2d(num_channels, momentum=0.01, eps=1e-3),
+            get_norm(norm, out_channels, momentum=0.01, eps=1e-3),
+            MaxPool2dStaticSamePadding(3, 2)
+        )
+        self.p7 = MaxPool2dStaticSamePadding(3, 2)
+        self.num_levels = 2
+        self.in_feature = in_feature
+        # self.p6 = nn.Conv2d(in_channels, out_channels, 3, 2, 1)
+        # self.p7 = nn.Conv2d(out_channels, out_channels, 3, 2, 1)
+
+        for m in self.p6.modules():
+            if isinstance(m, nn.Conv2d):
+                weight_init.c2_xavier_fill(m)
+
+        self._out_features = ['p6', 'p7']
+        self._out_feature_channels = [out_channels, out_channels]
+        self._out_feature_strides = [64, 128]
+
+    def forward(self, p5):
+        p6 = self.p6(p5)
+        p7 = self.p7(p6)
+        return [p6, p7]
 
 
 @BACKBONE_REGISTRY.register()
@@ -716,7 +775,7 @@ def build_efficientnet_fpn_backbone(cfg, input_shape):
     top_levels = cfg.MODEL.FPN.TOP_LEVELS
     in_channels_top = bottom_up.output_shape()['p5'].channels
     if top_levels == 2:
-        top_block = LastLevelP6P7(in_channels_top, out_channels, "p5")
+        top_block = EffLastLevelP6P7(in_channels_top, out_channels, "p5", norm=cfg.MODEL.FPN.NORM)
     if top_levels == 1:
         top_block = LastLevelP6(in_channels_top, out_channels, "p5")
     elif top_levels == 0:

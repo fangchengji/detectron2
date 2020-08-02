@@ -14,7 +14,8 @@ from detectron2.modeling.backbone import Backbone
 from detectron2.modeling.backbone.build import BACKBONE_REGISTRY
 from detectron2.layers import get_norm, ShapeSpec
 
-from .efficientnet import MemoryEfficientSwish, Swish, build_efficientnet_backbone
+from .efficientnet import MemoryEfficientSwish, Swish, build_efficientnet_backbone,\
+    EffLastLevelP6P7, Conv2dStaticSamePadding
 from .fpn import LastLevelMaxPool, LastLevelP6P7
 
 
@@ -32,16 +33,19 @@ class SeparableConvBlock(nn.Module):
         #  or just pointwise_conv apply bias.
         # A: Confirmed, just pointwise_conv applies bias, depthwise_conv has no bias.
         use_bias = norm == ""
-        self.depthwise_conv = nn.Conv2d(
-            in_channels, in_channels, kernel_size=3, stride=1, padding=1, groups=in_channels, bias=False
-        )
-        self.pointwise_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, bias=use_bias)
+        # self.depthwise_conv = nn.Conv2d(
+        #     in_channels, in_channels, kernel_size=3, stride=1, padding=1, groups=in_channels, bias=False
+        # )
+        # self.pointwise_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, bias=use_bias)
+        self.depthwise_conv = Conv2dStaticSamePadding(in_channels, in_channels,
+                                                      kernel_size=3, stride=1, groups=in_channels, bias=False)
+        self.pointwise_conv = Conv2dStaticSamePadding(in_channels, out_channels, kernel_size=1, stride=1)
 
         self.norm = norm
         if self.norm is not "":
             # Warning: pytorch momentum is different from tensorflow's, momentum_pytorch = 1 - momentum_tensorflow
             # self.bn = nn.BatchNorm2d(num_features=out_channels, momentum=0.01, eps=1e-3)
-            self.bn = get_norm(norm, out_channels)
+            self.bn = get_norm(norm, out_channels, momentum=0.01, eps=1e-3)
 
         self.activation = activation
         if self.activation:
@@ -114,6 +118,9 @@ class BiFPNBlock(nn.Module):
         self.down_convs = self.down_convs[::-1]
         self.down_weights = self.down_weights[::-1]
 
+        # BIFPN num feature levels
+        self.num_levels = len(in_features)
+
     def forward(self, inputs):
         """
         illustration of a minimal bifpn unit
@@ -138,6 +145,16 @@ class BiFPNBlock(nn.Module):
         # elif earlier phase, downsample to target phase's by pooling
         # elif later phase, upsample to target phase's by nearest interpolation
 
+        assert len(inputs) in [self.num_levels, self.num_levels + 2], \
+            f"The num of input levels {len(inputs)} is not expected!"
+
+        # the first bifpn block use the extra lateral layer as input of up path
+        # the first bifpn inputs is [p3, p4, p5, p4_extra, p5_extra, p6, p7]
+        extra_inputs = []
+        if len(inputs) == self.num_levels + 2:
+            extra_inputs.append(inputs.pop(3))  # p4_extra
+            extra_inputs.append(inputs.pop(3))  # p5_extra
+
         # down path
         inputs = inputs[::-1]  # reverse the input order
         features_td = []
@@ -150,6 +167,9 @@ class BiFPNBlock(nn.Module):
 
         # up path
         inputs = inputs[::-1]
+        if len(extra_inputs) > 0:
+            inputs[1] = extra_inputs[0]     # use p4_extra instrad of p4
+            inputs[2] = extra_inputs[1]     # use p5_extra insetad of p5
         features_td = features_td[::-1]
         outs = [features_td[0]]
         for idx, (conv, w) in enumerate(zip(self.up_convs, self.up_weights)):
@@ -212,12 +232,24 @@ class BiFPN(Backbone):
         for idx, in_channel in enumerate(in_channels):
             conv = nn.Sequential(
                 nn.Conv2d(in_channel, out_channels, kernel_size=1, bias=use_bias),
-                get_norm(norm, out_channels),
+                get_norm(norm, out_channels, momentum=0.01, eps=1e-3),
             )
             weight_init.c2_xavier_fill(conv[0])
             stage = int(math.log2(in_strides[idx]))
             self.add_module(f"bifpn_lateral{stage}", conv)
             self.lateral_convs.append(conv)
+
+        # extra lateral convs for p4, p5
+        self.extra_lateral_convs = [] 
+        for idx, in_channel in enumerate(in_channels[1:3]):
+            conv = nn.Sequential(
+                nn.Conv2d(in_channel, out_channels, kernel_size=1, bias=use_bias),
+                get_norm(norm, out_channels, momentum=0.01, eps=1e-3),
+            )
+            weight_init.c2_xavier_fill(conv[0])
+            stage = int(math.log2(in_strides[idx + 1]))
+            self.add_module(f"bifpn_extra_lateral{stage}", conv)
+            self.extra_lateral_convs.append(conv)
 
         # Place convs into top-down order (from low to high resolution)
         # to make the top-down computation in forward clearer.
@@ -266,6 +298,10 @@ class BiFPN(Backbone):
         bottom_up_features = self.bottom_up(x)
         x = [bottom_up_features[f] for f in self.in_features]
 
+        # extra lateral layer for p4 and p5
+        for idx, conv in enumerate(self.extra_lateral_convs):
+            x.append(conv(x[idx + 1]))
+
         for idx, conv in enumerate(self.lateral_convs):
             x[idx] = conv(x[idx])
 
@@ -304,7 +340,12 @@ def build_efficientnet_bifpn_backbone(cfg, input_shape):
     export_onnx = cfg.MODEL.EXPORT_ONNX
 
     if top_levels == 2:
-        top_block = LastLevelP6P7(in_channels_top, out_channels, "p5")
+        top_block = EffLastLevelP6P7(
+            in_channels_top, 
+            out_channels, 
+            "p5", 
+            norm=cfg.MODEL.BIFPN.NORM
+        )
     if top_levels == 1:
         top_block = LastLevelMaxPool(in_channels_top, out_channels, "p5")
     elif top_levels == 0:

@@ -22,6 +22,9 @@ from fvcore.nn import sigmoid_focal_loss_jit
 from ..anchor_generator import build_anchor_generator
 from ..matcher import Matcher
 
+from ..backbone.bifpn import SeparableConvBlock
+from ..backbone.efficientnet import MemoryEfficientSwish, Swish
+
 
 INF = 100000000
 
@@ -39,7 +42,10 @@ class QFLATSS(torch.nn.Module):
         assert len(set(in_channels)) == 1, "Each level must have the same channel!"
         in_channels = in_channels[0]
 
-        self.fcos_head = ATSSHead(cfg, in_channels)
+        if cfg.MODEL.ATSS.HEAD == "dw":
+            self.fcos_head = DWATSSHead(cfg, in_channels)
+        else:
+            self.fcos_head = ATSSHead(cfg, in_channels)
         box_coder = BoxCoder(cfg)
         self.loss_evaluator = ATSSLossComputation(cfg, box_coder)
         # for inference
@@ -142,6 +148,82 @@ class ATSSHead(torch.nn.Module):
         if self.cfg.MODEL.ATSS.REGRESSION_TYPE == 'POINT':
             assert num_anchors == 1, "regressing from a point only support num_anchors == 1"
             torch.nn.init.constant_(self.bbox_pred.bias, 4)
+
+        self.scales = nn.ModuleList([Scale(init_value=1.0) for _ in range(5)])
+
+    def forward(self, x):
+        logits = []
+        bbox_reg = []
+        for l, feature in enumerate(x):
+            cls_tower = self.cls_tower(feature)
+            box_tower = self.bbox_tower(feature)
+
+            logits.append(self.cls_logits(cls_tower))
+
+            bbox_pred = self.scales[l](self.bbox_pred(box_tower))
+            if self.cfg.MODEL.ATSS.REGRESSION_TYPE == 'POINT':
+                bbox_pred = F.relu(bbox_pred)
+            bbox_reg.append(bbox_pred)
+
+        return logits, bbox_reg
+
+
+class DWATSSHead(torch.nn.Module):
+    def __init__(self, cfg, in_channels):
+        super(DWATSSHead, self).__init__()
+        self.cfg = cfg
+        num_classes = cfg.MODEL.ATSS.NUM_CLASSES
+        num_anchors = len(cfg.MODEL.ANCHOR_GENERATOR.ASPECT_RATIOS[0]) * len(cfg.MODEL.ANCHOR_GENERATOR.SIZES[0])
+
+        head_configs = {"cls": (cfg.MODEL.ATSS.NUM_CONVS,
+                                False),
+                        "bbox": (cfg.MODEL.ATSS.NUM_CONVS,
+                                 cfg.MODEL.ATSS.USE_DCN_IN_TOWER),
+                        }
+        
+        # self.swish = MemoryEfficientSwish() if not onnx_export else Swish()
+        self.swish = MemoryEfficientSwish()
+
+        norm = None if cfg.MODEL.ATSS.NORM == "none" else cfg.MODEL.ATSS.NORM
+
+        for head in head_configs:
+            tower = []
+            num_convs, use_deformable = head_configs[head]
+            for i in range(num_convs):
+                tower.append(
+                    SeparableConvBlock(in_channels, in_channels, activation=False)
+                )
+                tower.append(
+                    get_norm(norm, in_channels, momentum=0.01, eps=1e-3)
+                )
+                tower.append(self.swish)
+            self.add_module('{}_tower'.format(head),
+                            nn.Sequential(*tower))
+
+        self.cls_logits = SeparableConvBlock(
+            in_channels, num_anchors * num_classes, activation=False
+        )
+        self.bbox_pred = SeparableConvBlock(
+            in_channels, num_anchors * 4, activation=False
+        )
+
+        # initialization
+        for modules in [self.cls_tower, self.bbox_tower,
+                        self.cls_logits, self.bbox_pred,
+                        ]:
+            for l in modules.modules():
+                if isinstance(l, nn.Conv2d):
+                    torch.nn.init.normal_(l.weight, std=0.01)
+                    if hasattr(l, "bias") and l.bias is not None:
+                        torch.nn.init.constant_(l.bias, 0)
+
+        # initialize the bias for focal loss
+        # prior_prob = cfg.MODEL.ATSS.PRIOR_PROB
+        # bias_value = -math.log((1 - prior_prob) / prior_prob)
+        # torch.nn.init.constant_(self.cls_logits.pointwise_conv.conv.bias, bias_value)
+        # if self.cfg.MODEL.ATSS.REGRESSION_TYPE == 'POINT':
+        #     assert num_anchors == 1, "regressing from a point only support num_anchors == 1"
+        #     torch.nn.init.constant_(self.bbox_pred.bias, 4)
 
         self.scales = nn.ModuleList([Scale(init_value=1.0) for _ in range(5)])
 

@@ -124,7 +124,7 @@ class FrozenBatchNorm2d(nn.Module):
         return res
 
 
-def get_norm(norm, out_channels):
+def get_norm(norm, out_channels, *args, **kwargs):
     """
     Args:
         norm (str or callable): either one of BN, SyncBN, FrozenBN, GN;
@@ -147,7 +147,7 @@ def get_norm(norm, out_channels):
             "nnSyncBN": nn.SyncBatchNorm,
             "naiveSyncBN": NaiveSyncBatchNorm,
         }[norm]
-    return norm(out_channels)
+    return norm(out_channels, *args, **kwargs)
 
 
 class AllReduce(Function):
