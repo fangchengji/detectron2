@@ -3,7 +3,7 @@ MODEL:
 #  WEIGHTS: "detectron2://ImageNetPretrained/FAIR/X-101-32x8d.pkl"
 #  WEIGHTS: "output/FCOS_MS_X_101_32x8d_dcnv2_2x.pth"
 #  WEIGHTS: "https://hangzh.s3-us-west-1.amazonaws.com/encoding/models/resnest101_detectron-486f69a8.pth"
-  WEIGHTS: "https://github.com/zylo117/Yet-Another-Efficient-Pytorch/releases/download/1.0/efficientdet-d5.pth"
+  # WEIGHTS: "https://github.com/zylo117/Yet-Another-Efficient-Pytorch/releases/download/1.0/efficientdet-d5.pth"
   MASK_ON: False
   KEYPOINT_ON: False
   PIXEL_STD: [57.375, 57.120, 58.395]
