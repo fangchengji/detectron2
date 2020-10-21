@@ -13,12 +13,14 @@ import pycocotools.mask as mask_util
 import torch
 from fvcore.common.file_io import PathManager
 from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 from tabulate import tabulate
 
 import detectron2.utils.comm as comm
+from detectron2.config import CfgNode
 from detectron2.data import MetadataCatalog
 from detectron2.data.datasets.coco import convert_to_coco_json
-from detectron2.evaluation.fast_eval_api import COCOeval_opt as COCOeval
+from detectron2.evaluation.fast_eval_api import COCOeval_opt
 from detectron2.structures import Boxes, BoxMode, pairwise_iou
 from detectron2.utils.logger import create_small_table
 
@@ -36,7 +38,16 @@ class COCOEvaluator(DatasetEvaluator):
     instance segmentation, or keypoint detection dataset.
     """
 
-    def __init__(self, dataset_name, cfg, distributed, output_dir=None):
+    def __init__(
+        self,
+        dataset_name,
+        tasks,
+        distributed,
+        output_dir=None,
+        *,
+        use_fast_impl=True,
+        kpt_oks_sigmas=(),
+    ):
         """
         Args:
             dataset_name (str): name of the dataset to be evaluated.
@@ -46,10 +57,12 @@ class COCOEvaluator(DatasetEvaluator):
 
                 Or it must be in detectron2's standard dataset format
                 so it can be converted to COCO format automatically.
-            cfg (CfgNode): config instance
+            tasks (tuple[str]): tasks that can be evaluated under the given configuration.
+                A task is one of "bbox", "segm", "keypoints".
+                DEPRECATED pass cfgNode here to generate tasks from config
             distributed (True): if True, will collect results from all ranks and run evaluation
                 in the main process.
-                Otherwise, will evaluate the results in the current process.
+                Otherwise, will only evaluate the results in the current process.
             output_dir (str): optional, an output directory to dump all
                 results predicted on the dataset. The dump contains two files:
 
@@ -57,13 +70,33 @@ class COCOEvaluator(DatasetEvaluator):
                    format that contains all the raw original predictions.
                 2. "coco_instances_results.json" a json file in COCO's result
                    format.
+            use_fast_impl (bool): use a fast but **unofficial** implementation to compute AP.
+                Although the results should be very close to the official implementation in COCO
+                API, it is still recommended to compute results with the official API for use in
+                papers.
+            kpt_oks_sigmas (list[float]): The sigmas used to calculate keypoint OKS.
+                See http://cocodataset.org/#keypoints-eval
+                When empty, it will use the defaults in COCO.
+                Otherwise it should be the same length as ROI_KEYPOINT_HEAD.NUM_KEYPOINTS.
         """
-        self._tasks = self._tasks_from_config(cfg)
+        self._logger = logging.getLogger(__name__)
+        if isinstance(tasks, CfgNode):
+            kpt_oks_sigmas = (
+                tasks.TEST.KEYPOINT_OKS_SIGMAS if not kpt_oks_sigmas else kpt_oks_sigmas
+            )
+            self._tasks = self._tasks_from_config(tasks)
+            self._logger.warn(
+                "COCO Evaluator instantiated using config, this is deprecated behavior. \
+                Please pass tasks in directly"
+            )
+        else:
+            self._tasks = tasks
+
         self._distributed = distributed
         self._output_dir = output_dir
+        self._use_fast_impl = use_fast_impl
 
         self._cpu_device = torch.device("cpu")
-        self._logger = logging.getLogger(__name__)
 
         self._metadata = MetadataCatalog.get(dataset_name)
         if not hasattr(self._metadata, "json_file"):
@@ -80,7 +113,7 @@ class COCOEvaluator(DatasetEvaluator):
         with contextlib.redirect_stdout(io.StringIO()):
             self._coco_api = COCO(json_file)
 
-        self._kpt_oks_sigmas = cfg.TEST.KEYPOINT_OKS_SIGMAS
+        self._kpt_oks_sigmas = kpt_oks_sigmas
         # Test set json files do not contain annotations (evaluation must be
         # performed using the COCO evaluation server).
         self._do_evaluation = "annotations" in self._coco_api.dataset
@@ -88,7 +121,8 @@ class COCOEvaluator(DatasetEvaluator):
     def reset(self):
         self._predictions = []
 
-    def _tasks_from_config(self, cfg):
+    @staticmethod
+    def _tasks_from_config(cfg):
         """
         Returns:
             tuple[str]: tasks that can be evaluated under the given configuration.
@@ -112,7 +146,6 @@ class COCOEvaluator(DatasetEvaluator):
         for input, output in zip(inputs, outputs):
             prediction = {"image_id": input["image_id"]}
 
-            # TODO this is ugly
             if "instances" in output:
                 instances = output["instances"].to(self._cpu_device)
                 prediction["instances"] = instances_to_coco_json(instances, input["image_id"])
@@ -120,7 +153,11 @@ class COCOEvaluator(DatasetEvaluator):
                 prediction["proposals"] = output["proposals"].to(self._cpu_device)
             self._predictions.append(prediction)
 
-    def evaluate(self):
+    def evaluate(self, img_ids=None):
+        """
+        Args:
+            img_ids: a list of image IDs to evaluate on. Default to None for the whole dataset
+        """
         if self._distributed:
             comm.synchronize()
             predictions = comm.gather(self._predictions, dst=0)
@@ -145,11 +182,11 @@ class COCOEvaluator(DatasetEvaluator):
         if "proposals" in predictions[0]:
             self._eval_box_proposals(predictions)
         if "instances" in predictions[0]:
-            self._eval_predictions(set(self._tasks), predictions)
+            self._eval_predictions(set(self._tasks), predictions, img_ids=img_ids)
         # Copy so the caller can do whatever with results
         return copy.deepcopy(self._results)
 
-    def _eval_predictions(self, tasks, predictions):
+    def _eval_predictions(self, tasks, predictions, img_ids=None):
         """
         Evaluate predictions on the given tasks.
         Fill self._results with the metrics of the tasks.
@@ -182,11 +219,20 @@ class COCOEvaluator(DatasetEvaluator):
             self._logger.info("Annotations are not available for evaluation.")
             return
 
-        self._logger.info("Evaluating predictions ...")
+        self._logger.info(
+            "Evaluating predictions with {} COCO API...".format(
+                "unofficial" if self._use_fast_impl else "official"
+            )
+        )
         for task in sorted(tasks):
             coco_eval = (
                 _evaluate_predictions_on_coco(
-                    self._coco_api, coco_results, task, kpt_oks_sigmas=self._kpt_oks_sigmas
+                    self._coco_api,
+                    coco_results,
+                    task,
+                    kpt_oks_sigmas=self._kpt_oks_sigmas,
+                    use_fast_impl=self._use_fast_impl,
+                    img_ids=img_ids,
                 )
                 if len(coco_results) > 0
                 else None  # cocoapi does not handle empty results very well
@@ -480,7 +526,9 @@ def _evaluate_box_proposals(dataset_predictions, coco_api, thresholds=None, area
     }
 
 
-def _evaluate_predictions_on_coco(coco_gt, coco_results, iou_type, kpt_oks_sigmas=None):
+def _evaluate_predictions_on_coco(
+    coco_gt, coco_results, iou_type, kpt_oks_sigmas=None, use_fast_impl=True, img_ids=None
+):
     """
     Evaluate the coco results using COCOEval API.
     """
@@ -496,7 +544,9 @@ def _evaluate_predictions_on_coco(coco_gt, coco_results, iou_type, kpt_oks_sigma
             c.pop("bbox", None)
 
     coco_dt = coco_gt.loadRes(coco_results)
-    coco_eval = COCOeval(coco_gt, coco_dt, iou_type)
+    coco_eval = (COCOeval_opt if use_fast_impl else COCOeval)(coco_gt, coco_dt, iou_type)
+    if img_ids is not None:
+        coco_eval.params.imgIds = img_ids
 
     if iou_type == "keypoints":
         # Use the COCO default keypoint OKS sigmas unless overrides are specified

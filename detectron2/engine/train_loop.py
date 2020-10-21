@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
+import contextlib
 import logging
 import numpy as np
 import time
@@ -11,6 +12,15 @@ import detectron2.utils.comm as comm
 from detectron2.utils.events import EventStorage
 
 __all__ = ["HookBase", "TrainerBase", "SimpleTrainer"]
+
+
+try:
+    _nullcontext = contextlib.nullcontext  # python 3.7+
+except AttributeError:
+
+    @contextlib.contextmanager
+    def _nullcontext(enter_result=None):
+        yield enter_result
 
 
 class HookBase:
@@ -25,11 +35,13 @@ class HookBase:
             hook.before_step()
             trainer.run_step()
             hook.after_step()
+        iter += 1
         hook.after_train()
 
     Notes:
-        1. In the hook method, users can access `self.trainer` to access more
-           properties about the context (e.g., current iteration).
+        1. In the hook method, users can access ``self.trainer`` to access more
+           properties about the context (e.g., model, current iteration, or config
+           if using :class:`DefaultTrainer`).
 
         2. A hook that does something in :meth:`before_step` can often be
            implemented equivalently in :meth:`after_step`.
@@ -42,8 +54,8 @@ class HookBase:
            function properly.
 
     Attributes:
-        trainer: A weak reference to the trainer object. Set by the trainer when the hook is
-            registered.
+        trainer (TrainerBase): A weak reference to the trainer object. Set by the trainer
+            when the hook is registered.
     """
 
     def before_train(self):
@@ -129,6 +141,10 @@ class TrainerBase:
                     self.before_step()
                     self.run_step()
                     self.after_step()
+                # self.iter == max_iter can be used by `after_train` to
+                # tell whether the training successfully finished or failed
+                # due to exceptions.
+                self.iter += 1
             except Exception:
                 logger.exception("Exception during training:")
                 raise
@@ -140,18 +156,21 @@ class TrainerBase:
             h.before_train()
 
     def after_train(self):
+        self.storage.iter = self.iter
         for h in self._hooks:
             h.after_train()
 
     def before_step(self):
+        # Maintain the invariant that storage.iter == trainer.iter
+        # for the entire execution of each step
+        self.storage.iter = self.iter
+
         for h in self._hooks:
             h.before_step()
 
     def after_step(self):
         for h in self._hooks:
             h.after_step()
-        # this guarantees, that in each hook's after_step, storage.iter == trainer.iter
-        self.storage.step()
 
     def run_step(self):
         raise NotImplementedError
@@ -224,7 +243,9 @@ class SimpleTrainer(TrainerBase):
         losses.backward()
 
         # use a new stream so the ops don't wait for DDP
-        with torch.cuda.stream(torch.cuda.Stream()):
+        with torch.cuda.stream(
+            torch.cuda.Stream()
+        ) if losses.device.type == "cuda" else _nullcontext():
             metrics_dict = loss_dict
             metrics_dict["data_time"] = data_time
             self._write_metrics(metrics_dict)

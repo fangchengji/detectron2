@@ -10,9 +10,6 @@ Alexander Kirillov, Yuxin Wu, Kaiming He, Ross Girshick
 
 In this repository, we release code for PointRend in Detectron2. PointRend can be flexibly applied to both instance and semantic segmentation tasks by building on top of existing state-of-the-art models.
 
-## Installation
-Install Detectron2 following [the instructions](https://detectron2.readthedocs.io/tutorials/install.html). You are ready to go!
-
 ## Quick start and visualization
 
 This [Colab Notebook](https://colab.research.google.com/drive/1isGPL5h5_cKoPPhVL9XhMokRtHDvmMVL) tutorial contains examples of PointRend usage and visualizations of its point sampling stages.
@@ -70,7 +67,9 @@ python train_net.py --config-file configs/InstanceSegmentation/pointrend_rcnn_R_
 </tr>
 </tbody></table>
 
-AP&ast; is COCO mask AP evaluated against the higher-quality LVIS annotations; see the paper for details. Run `python detectron2/datasets/prepare_cocofied_lvis.py` to prepare GT files for AP&ast; evaluation. Since LVIS annotations are not exhaustive `lvis-api` and not `cocoapi` should be used to evaluate AP&ast;.
+AP&ast; is COCO mask AP evaluated against the higher-quality LVIS annotations; see the paper for details.
+Run `python detectron2/datasets/prepare_cocofied_lvis.py` to prepare GT files for AP&ast; evaluation.
+Since LVIS annotations are not exhaustive, `lvis-api` and not `cocoapi` should be used to evaluate AP&ast;.
 
 #### Cityscapes
 Cityscapes model is trained with ImageNet pretraining.
