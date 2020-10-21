@@ -13,21 +13,20 @@ import torch
 from detectron2.config import get_cfg
 from detectron2.data.detection_utils import read_image
 from detectron2.engine.defaults import DefaultPredictor
-from detectron2.structures.boxes import BoxMode
 from detectron2.structures.instances import Instances
 from detectron2.utils.logger import setup_logger
 
-from densepose import add_densepose_config
+from densepose import add_densepose_config, add_hrnet_config
 from densepose.utils.logger import verbosity_to_level
 from densepose.vis.base import CompoundVisualizer
 from densepose.vis.bounding_box import ScoredBoundingBoxVisualizer
-from densepose.vis.densepose import (
+from densepose.vis.densepose_results import (
     DensePoseResultsContourVisualizer,
     DensePoseResultsFineSegmentationVisualizer,
     DensePoseResultsUVisualizer,
     DensePoseResultsVVisualizer,
 )
-from densepose.vis.extractor import CompoundExtractor, create_extractor
+from densepose.vis.extractor import CompoundExtractor, DensePoseResultExtractor, create_extractor
 
 DOC = """Apply Net - a tool to print / visualize DensePose results
 """
@@ -98,6 +97,7 @@ class InferenceAction(Action):
     ):
         cfg = get_cfg()
         add_densepose_config(cfg)
+        add_hrnet_config(cfg)
         cfg.merge_from_file(config_fpath)
         cfg.merge_from_list(args.opts)
         if opts:
@@ -157,10 +157,7 @@ class DumpAction(InferenceAction):
         if outputs.has("pred_boxes"):
             result["pred_boxes_XYXY"] = outputs.get("pred_boxes").tensor.cpu()
             if outputs.has("pred_densepose"):
-                boxes_XYWH = BoxMode.convert(
-                    result["pred_boxes_XYXY"], BoxMode.XYXY_ABS, BoxMode.XYWH_ABS
-                )
-                result["pred_densepose"] = outputs.get("pred_densepose").to_result(boxes_XYWH)
+                result["pred_densepose"], _ = DensePoseResultExtractor()(outputs)
         context["results"].append(result)
 
     @classmethod

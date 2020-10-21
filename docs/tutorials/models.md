@@ -91,6 +91,8 @@ The dict may contain the following keys:
 * "sem_seg": `Tensor[int]` in (H, W) format. The semantic segmentation ground truth for training.
   Values represent category labels starting from 0.
 
+We currently don't define standard input format for panoptic segmentation training,
+because models now use custom formats produced by custom data loaders.
 
 #### How it connects to data loader:
 
@@ -120,17 +122,28 @@ Based on the tasks the model is doing, each dict may contain the following field
   * "proposal_boxes": [Boxes](../modules/structures.html#detectron2.structures.Boxes)
     object storing N boxes.
   * "objectness_logits": a torch vector of N scores.
-* "panoptic_seg": A tuple of `(Tensor, list[dict])`. The tensor has shape (H, W), where each element
-  represent the segment id of the pixel. Each dict describes one segment id and has the following fields:
-  * "id": the segment id
-  * "isthing": whether the segment is a thing or stuff
-  * "category_id": the category id of this segment. It represents the thing
-       class id when `isthing==True`, and the stuff class id otherwise.
+* "panoptic_seg": A tuple of `(pred: Tensor, segments_info: Optional[list[dict]])`.
+  The `pred` tensor has shape (H, W), containing the segment id of each pixel.
+
+  * If `segments_info` exists, each dict describes one segment id in `pred` and has the following fields:
+
+    * "id": the segment id
+    * "isthing": whether the segment is a thing or stuff
+    * "category_id": the category id of this segment.
+
+    If a pixel's id does not exist in `segments_info`, it is considered to be void label
+    defined in [Panoptic Segmentation](https://arxiv.org/abs/1801.00868).
+
+  * If `segments_info` is None, all pixel values in `pred` must be ≥ -1.
+    Pixels with value -1 are assigned void labels.
+    Otherwise, the category id of each pixel is obtained by
+    `category_id = pixel // metadata.label_divisor`.
 
 
 ### Partially execute a model:
 
-Sometimes you may want to obtain an intermediate tensor inside a model.
+Sometimes you may want to obtain an intermediate tensor inside a model,
+such as the input of certain layer, the output before post-processing.
 Since there are typically hundreds of intermediate tensors, there isn't an API that provides you
 the intermediate result you need.
 You have the following options:
@@ -143,15 +156,22 @@ You have the following options:
    but use custom code to execute it instead of its `forward()`. For example,
    the following code obtains mask features before mask head.
 
-```python
-images = ImageList.from_tensors(...)  # preprocessed input tensor
-model = build_model(cfg)
-features = model.backbone(images.tensor)
-proposals, _ = model.proposal_generator(images, features)
-instances = model.roi_heads._forward_box(features, proposals)
-mask_features = [features[f] for f in model.roi_heads.in_features]
-mask_features = model.roi_heads.mask_pooler(mask_features, [x.pred_boxes for x in instances])
-```
+   ```python
+   images = ImageList.from_tensors(...)  # preprocessed input tensor
+   model = build_model(cfg)
+   model.eval()
+   features = model.backbone(images.tensor)
+   proposals, _ = model.proposal_generator(images, features)
+   instances, _ = model.roi_heads(images, features, proposals)
+   mask_features = [features[f] for f in model.roi_heads.in_features]
+   mask_features = model.roi_heads.mask_pooler(mask_features, [x.pred_boxes for x in instances])
+   ```
 
-Note that both options require you to read the existing forward code to understand
-how to write code to obtain the outputs you need.
+3. Use [forward hooks](https://pytorch.org/tutorials/beginner/former_torchies/nnft_tutorial.html#forward-and-backward-function-hooks).
+   Forward hooks can help you obtain inputs or outputs of a certain module.
+   If they are not exactly what you want, they can at least be used together with partial execution
+   to obtain other tensors.
+
+All options require you to read documentation and sometimes code
+of the existing models to understand the internal logic,
+in order to write code to obtain the internal tensors.

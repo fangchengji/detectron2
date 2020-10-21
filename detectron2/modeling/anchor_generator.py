@@ -83,7 +83,7 @@ class DefaultAnchorGenerator(nn.Module):
     "Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks".
     """
 
-    box_dim: int = 4
+    box_dim: torch.jit.Final[int] = 4
     """
     the dimension of each anchor box.
     """
@@ -134,6 +134,7 @@ class DefaultAnchorGenerator(nn.Module):
         return BufferList(cell_anchors)
 
     @property
+    @torch.jit.unused
     def num_cell_anchors(self):
         """
         Alias of `num_anchors`.
@@ -141,6 +142,7 @@ class DefaultAnchorGenerator(nn.Module):
         return self.num_anchors
 
     @property
+    @torch.jit.unused
     def num_anchors(self):
         """
         Returns:

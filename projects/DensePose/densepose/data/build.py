@@ -3,8 +3,10 @@
 import itertools
 import logging
 import numpy as np
+from collections import UserDict
 from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Sequence
 import torch
+from torch.utils.data.dataset import Dataset
 
 from detectron2.config import CfgNode
 from detectron2.data.build import (
@@ -13,21 +15,33 @@ from detectron2.data.build import (
     print_instances_class_histogram,
     trivial_batch_collator,
 )
-from detectron2.data.catalog import DatasetCatalog, MetadataCatalog
+from detectron2.data.catalog import DatasetCatalog, Metadata, MetadataCatalog
 from detectron2.data.common import DatasetFromList, MapDataset
 from detectron2.data.samplers import InferenceSampler, RepeatFactorTrainingSampler, TrainingSampler
 from detectron2.utils.comm import get_world_size
+
+from densepose.config import get_bootstrap_dataset_config
 
 from .combined_loader import CombinedDataLoader, Loader
 from .dataset_mapper import DatasetMapper
 from .datasets.coco import DENSEPOSE_KEYS_WITHOUT_MASK as DENSEPOSE_COCO_KEYS_WITHOUT_MASK
 from .datasets.coco import DENSEPOSE_MASK_KEY as DENSEPOSE_COCO_MASK_KEY
+from .datasets.dataset_type import DatasetType
+from .inference_based_loader import InferenceBasedLoader, ScoreBasedFilter
+from .samplers import (
+    DensePoseConfidenceBasedSampler,
+    DensePoseUniformSampler,
+    MaskFromDensePoseSampler,
+    PredictionToGroundTruthSampler,
+)
 from .transform import ImageResizeTransform
 from .video import (
     FirstKFramesSelector,
     FrameSelectionStrategy,
     LastKFramesSelector,
     RandomKFramesSelector,
+    VideoKeyframeDataset,
+    video_list_from_file,
 )
 
 __all__ = ["build_detection_train_loader", "build_detection_test_loader"]
@@ -422,3 +436,169 @@ def build_transform(cfg: CfgNode, data_type: str):
 def build_combined_loader(cfg: CfgNode, loaders: Collection[Loader], ratios: Sequence[float]):
     images_per_worker = _compute_num_images_per_worker(cfg)
     return CombinedDataLoader(loaders, images_per_worker, ratios)
+
+
+def build_bootstrap_dataset(dataset_name: str, cfg: CfgNode) -> Sequence[torch.Tensor]:
+    """
+    Build dataset that provides data to bootstrap on
+
+    Args:
+        dataset_name (str): Name of the dataset, needs to have associated metadata
+            to load the data
+        cfg (CfgNode): bootstrapping config
+    Returns:
+        Sequence[Tensor] - dataset that provides image batches, Tensors of size
+            [N, C, H, W] of type float32
+    """
+    logger = logging.getLogger(__name__)
+    meta = MetadataCatalog.get(dataset_name)
+    factory = BootstrapDatasetFactoryCatalog.get(meta.dataset_type)
+    dataset = None
+    if factory is not None:
+        dataset = factory(meta, cfg)
+    if dataset is None:
+        logger.warning(f"Failed to create dataset {dataset_name} of type {meta.dataset_type}")
+    return dataset
+
+
+def build_data_sampler(cfg: CfgNode):
+    if cfg.TYPE == "densepose_uniform":
+        data_sampler = PredictionToGroundTruthSampler()
+        # transform densepose pred -> gt
+        data_sampler.register_sampler(
+            "pred_densepose",
+            "gt_densepose",
+            DensePoseUniformSampler(count_per_class=cfg.COUNT_PER_CLASS),
+        )
+        data_sampler.register_sampler("pred_densepose", "gt_masks", MaskFromDensePoseSampler())
+        return data_sampler
+    elif cfg.TYPE == "densepose_UV_confidence":
+        data_sampler = PredictionToGroundTruthSampler()
+        # transform densepose pred -> gt
+        data_sampler.register_sampler(
+            "pred_densepose",
+            "gt_densepose",
+            DensePoseConfidenceBasedSampler(
+                confidence_channel="sigma_2",
+                count_per_class=cfg.COUNT_PER_CLASS,
+                search_proportion=0.5,
+            ),
+        )
+        data_sampler.register_sampler("pred_densepose", "gt_masks", MaskFromDensePoseSampler())
+        return data_sampler
+    elif cfg.TYPE == "densepose_fine_segm_confidence":
+        data_sampler = PredictionToGroundTruthSampler()
+        # transform densepose pred -> gt
+        data_sampler.register_sampler(
+            "pred_densepose",
+            "gt_densepose",
+            DensePoseConfidenceBasedSampler(
+                confidence_channel="fine_segm_confidence",
+                count_per_class=cfg.COUNT_PER_CLASS,
+                search_proportion=0.5,
+            ),
+        )
+        data_sampler.register_sampler("pred_densepose", "gt_masks", MaskFromDensePoseSampler())
+        return data_sampler
+    elif cfg.TYPE == "densepose_coarse_segm_confidence":
+        data_sampler = PredictionToGroundTruthSampler()
+        # transform densepose pred -> gt
+        data_sampler.register_sampler(
+            "pred_densepose",
+            "gt_densepose",
+            DensePoseConfidenceBasedSampler(
+                confidence_channel="coarse_segm_confidence",
+                count_per_class=cfg.COUNT_PER_CLASS,
+                search_proportion=0.5,
+            ),
+        )
+        data_sampler.register_sampler("pred_densepose", "gt_masks", MaskFromDensePoseSampler())
+        return data_sampler
+
+    raise ValueError(f"Unknown data sampler type {cfg.TYPE}")
+
+
+def build_data_filter(cfg: CfgNode):
+    if cfg.TYPE == "detection_score":
+        min_score = cfg.MIN_VALUE
+        return ScoreBasedFilter(min_score=min_score)
+    raise ValueError(f"Unknown data filter type {cfg.TYPE}")
+
+
+def build_inference_based_loader(
+    cfg: CfgNode, dataset_cfg: CfgNode, model: torch.nn.Module
+) -> InferenceBasedLoader:
+    """
+    Constructs data loader based on inference results of a model.
+    """
+    dataset = build_bootstrap_dataset(dataset_cfg.DATASET, dataset_cfg.IMAGE_LOADER)
+    training_sampler = TrainingSampler(len(dataset))
+    data_loader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=dataset_cfg.IMAGE_LOADER.BATCH_SIZE,
+        sampler=training_sampler,
+        num_workers=dataset_cfg.IMAGE_LOADER.NUM_WORKERS,
+        collate_fn=trivial_batch_collator,
+    )
+    return InferenceBasedLoader(
+        model,
+        data_loader=data_loader,
+        data_sampler=build_data_sampler(dataset_cfg.DATA_SAMPLER),
+        data_filter=build_data_filter(dataset_cfg.FILTER),
+        shuffle=True,
+        batch_size=dataset_cfg.INFERENCE.OUTPUT_BATCH_SIZE,
+        inference_batch_size=dataset_cfg.INFERENCE.INPUT_BATCH_SIZE,
+    )
+
+
+def has_inference_based_loaders(cfg: CfgNode) -> bool:
+    """
+    Returns True, if at least one inferense-based loader must
+    be instantiated for training
+    """
+    return len(cfg.BOOTSTRAP_DATASETS) > 0
+
+
+def build_inference_based_loaders(
+    cfg: CfgNode, model: torch.nn.Module
+) -> List[InferenceBasedLoader]:
+    loaders = []
+    ratios = []
+    for dataset_spec in cfg.BOOTSTRAP_DATASETS:
+        dataset_cfg = get_bootstrap_dataset_config().clone()
+        dataset_cfg.merge_from_other_cfg(CfgNode(dataset_spec))
+        loader = build_inference_based_loader(cfg, dataset_cfg, model)
+        loaders.append(loader)
+        ratios.append(dataset_cfg.RATIO)
+    return loaders, ratios
+
+
+def build_video_list_dataset(meta: Metadata, cfg: CfgNode):
+    video_list_fpath = meta.video_list_fpath
+    video_base_path = meta.video_base_path
+    if cfg.TYPE == "video_keyframe":
+        frame_selector = build_frame_selector(cfg.SELECT)
+        transform = build_transform(cfg.TRANSFORM, data_type="image")
+        video_list = video_list_from_file(video_list_fpath, video_base_path)
+        return VideoKeyframeDataset(video_list, frame_selector, transform)
+
+
+class _BootstrapDatasetFactoryCatalog(UserDict):
+    """
+    A global dictionary that stores information about bootstrapped datasets creation functions
+    from metadata and config, for diverse DatasetType
+    """
+
+    def register(self, dataset_type: DatasetType, factory: Callable[[Metadata, CfgNode], Dataset]):
+        """
+        Args:
+            dataset_type (DatasetType): a DatasetType e.g. DatasetType.VIDEO_LIST
+            factory (Callable[Metadata, CfgNode]): a callable which takes Metadata and cfg
+            arguments and returns a dataset object.
+        """
+        assert dataset_type not in self, "Dataset '{}' is already registered!".format(dataset_type)
+        self[dataset_type] = factory
+
+
+BootstrapDatasetFactoryCatalog = _BootstrapDatasetFactoryCatalog()
+BootstrapDatasetFactoryCatalog.register(DatasetType.VIDEO_LIST, build_video_list_dataset)

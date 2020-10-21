@@ -1,7 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
 import contextlib
-import mock
+from unittest import mock
 import torch
 
 from detectron2.modeling import poolers
@@ -112,10 +112,9 @@ def mock_keypoint_rcnn_inference(tensor_mode, patched_module, use_heatmap_max_ke
 
 
 class ROIHeadsPatcher:
-    def __init__(self, cfg, heads):
+    def __init__(self, heads, use_heatmap_max_keypoint):
         self.heads = heads
-
-        self.use_heatmap_max_keypoint = cfg.EXPORT_CAFFE2.USE_HEATMAP_MAX_KEYPOINT
+        self.use_heatmap_max_keypoint = use_heatmap_max_keypoint
 
     @contextlib.contextmanager
     def mock_roi_heads(self, tensor_mode=True):

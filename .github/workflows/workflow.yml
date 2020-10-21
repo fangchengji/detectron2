@@ -18,7 +18,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install flake8==3.8.1 flake8-bugbear flake8-comprehensions isort==4.3.21
-          python -m pip install 'black @ git+https://github.com/psf/black@673327449f86fce558adde153bb6cbe54bfebad2'
+          python -m pip install black==20.8b1
           flake8 --version
       - name: Lint
         run: |
@@ -29,43 +29,43 @@ jobs:
           echo "Running flake8"
           flake8 .
 
-  build_macos:
+  macos_tests:
     runs-on: macos-latest
     # run on PRs, or commits to facebookresearch (not internal)
     if: ${{ github.repository_owner == 'facebookresearch' || github.event_name == 'pull_request' }}
     strategy:
       matrix:
-        torch: [1.5]
+        torch: [1.5, 1.6]
         include:
           - torch: 1.5
             torchvision: 0.6
+          - torch: 1.6
+            torchvision: 0.7
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v2
       - name: Set up Python 3.6
         uses: actions/setup-python@v2
         with:
           python-version: 3.6
-
       - name: Cache dependencies
         uses: actions/cache@v2
         with:
           path: |
-            /Users/runner/hostedtoolcache/Python/3.6.10/x64/lib/python3.6/site-packages
+            ${{ env.pythonLocation }}/lib/python3.6/site-packages
             ~/.torch
-          key: ${{ runner.os }}-torch${{ matrix.torch }}-${{ hashFiles('setup.py') }}
+          key: ${{ runner.os }}-torch${{ matrix.torch }}-${{ hashFiles('setup.py') }}-20200709
 
       - name: Install dependencies
         run: |
-          brew install ninja
-          python -m pip install -U pip
-          python -m pip install opencv-python-headless onnx
+          python -m pip install -U pip setuptools==49
+          python -m pip install ninja opencv-python-headless onnx pytest-xdist
+          python -m pip install torch==${{matrix.torch}} torchvision==${{matrix.torchvision}} -f https://download.pytorch.org/whl/torch_stable.html
           python -m pip install -U 'git+https://github.com/facebookresearch/fvcore'
-      - name: Install PyTorch ${{ matrix.torch }}
-        run: python -m pip install torch==${{matrix.torch}} torchvision==${{matrix.torchvision}} -f https://download.pytorch.org/whl/torch_stable.html
 
       - name: Build and install
         run: |
-          CC=clang CXX=clang++ python -m pip install -e .
+          CC=clang CXX=clang++ python -m pip install -e .[all]
           python -m detectron2.utils.collect_env
       - name: Run unittests
-        run: python -m unittest discover -v -s tests
+        run: python -m pytest -n 4 -v tests/

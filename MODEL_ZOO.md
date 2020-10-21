@@ -5,21 +5,21 @@
 This file documents a large collection of baselines trained
 with detectron2 in Sep-Oct, 2019.
 All numbers were obtained on [Big Basin](https://engineering.fb.com/data-center-engineering/introducing-big-basin-our-next-generation-ai-hardware/)
-servers with 8 NVIDIA V100 GPUs & NVLink. The software in use were PyTorch 1.3, CUDA 9.2, cuDNN 7.4.2 or 7.6.3.
+servers with 8 NVIDIA V100 GPUs & NVLink. The speed numbers are periodically updated with latest PyTorch/CUDA/cuDNN versions.
 You can access these models from code using [detectron2.model_zoo](https://detectron2.readthedocs.io/modules/model_zoo.html) APIs.
 
 In addition to these official baseline models, you can find more models in [projects/](projects/).
 
 #### How to Read the Tables
-* The "Name" column contains a link to the config file. Running `tools/train_net.py` with this config file
-	and 8 GPUs will reproduce the model.
+* The "Name" column contains a link to the config file. Running `tools/train_net.py --num-gpus 8` with this config file
+  will reproduce the model.
 * Training speed is averaged across the entire training.
-	We keep updating the speed with latest version of detectron2/pytorch/etc.,
-	so they might be different from the `metrics` file.
-	Training speed for multi-machine jobs is not provided.
+  We keep updating the speed with latest version of detectron2/pytorch/etc.,
+  so they might be different from the `metrics` file.
+  Training speed for multi-machine jobs is not provided.
 * Inference speed is measured by `tools/train_net.py --eval-only`, or [inference_on_dataset()](https://detectron2.readthedocs.io/modules/evaluation.html#detectron2.evaluation.inference_on_dataset),
   with batch size 1 in detectron2 directly.
-	Measuring it with custom code may introduce other overhead.
+  Measuring it with custom code may introduce other overhead.
   Actual deployment in production should in general be faster than the given inference
   speed due to more optimizations.
 * The *model id* column is provided for ease of reference.
@@ -49,12 +49,15 @@ In addition to these official baseline models, you can find more models in [proj
 
 #### ImageNet Pretrained Models
 
-We provide backbone models pretrained on ImageNet-1k dataset.
-These models have __different__ format from those provided in Detectron: we do not fuse BatchNorm into an affine layer.
+It's common to initialize from backbone models pre-trained on ImageNet classification tasks. The following backbone models are available:
+
 * [R-50.pkl](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/MSRA/R-50.pkl): converted copy of [MSRA's original ResNet-50](https://github.com/KaimingHe/deep-residual-networks) model.
 * [R-101.pkl](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/MSRA/R-101.pkl): converted copy of [MSRA's original ResNet-101](https://github.com/KaimingHe/deep-residual-networks) model.
 * [X-101-32x8d.pkl](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/FAIR/X-101-32x8d.pkl): ResNeXt-101-32x8d model trained with Caffe2 at FB.
+* [R-50.pkl (torchvision)](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/torchvision/R-50.pkl): converted copy of [torchvision's ResNet-50](https://pytorch.org/docs/stable/torchvision/models.html#torchvision.models.resnet50) model.
+  More details can be found in [the conversion script](tools/convert-torchvision-to-d2.py).
 
+Note that the above models have __different__ format from those provided in Detectron: we do not fuse BatchNorm into an affine layer.
 Pretrained models in Detectron's format can still be used. For example:
 * [X-152-32x8d-IN5k.pkl](https://dl.fbaipublicfiles.com/detectron/ImageNetPretrained/25093814/X-152-32x8d-IN5k.pkl):
   ResNeXt-152-32x8d model trained on ImageNet-5k with Caffe2 at FB (see ResNeXt paper for details on ImageNet-5k).
@@ -62,8 +65,6 @@ Pretrained models in Detectron's format can still be used. For example:
   ResNet-50 with Group Normalization.
 * [R-101-GN.pkl](https://dl.fbaipublicfiles.com/detectron/ImageNetPretrained/47592356/R-101-GN.pkl):
   ResNet-101 with Group Normalization.
-
-Torchvision's ResNet models can be used after converted by [this script](tools/convert-torchvision-to-d2.py).
 
 #### License
 
@@ -218,7 +219,7 @@ All models available for download through this document are licensed under the
  <tr><td align="left"><a href="configs/COCO-Detection/retinanet_R_50_FPN_1x.yaml">R50</a></td>
 <td align="center">1x</td>
 <td align="center">0.205</td>
-<td align="center">0.056</td>
+<td align="center">0.041</td>
 <td align="center">4.1</td>
 <td align="center">37.4</td>
 <td align="center">190397773</td>
@@ -228,7 +229,7 @@ All models available for download through this document are licensed under the
  <tr><td align="left"><a href="configs/COCO-Detection/retinanet_R_50_FPN_3x.yaml">R50</a></td>
 <td align="center">3x</td>
 <td align="center">0.205</td>
-<td align="center">0.056</td>
+<td align="center">0.041</td>
 <td align="center">4.1</td>
 <td align="center">38.7</td>
 <td align="center">190397829</td>
@@ -238,7 +239,7 @@ All models available for download through this document are licensed under the
  <tr><td align="left"><a href="configs/COCO-Detection/retinanet_R_101_FPN_3x.yaml">R101</a></td>
 <td align="center">3x</td>
 <td align="center">0.291</td>
-<td align="center">0.069</td>
+<td align="center">0.054</td>
 <td align="center">5.2</td>
 <td align="center">40.4</td>
 <td align="center">190397697</td>

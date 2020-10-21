@@ -8,6 +8,7 @@ from .roi_align import ROIAlign, roi_align
 from .roi_align_rotated import ROIAlignRotated, roi_align_rotated
 from .shape_spec import ShapeSpec
 from .blocks import CNNBlockBase
+from .aspp import ASPP
 
 from .iou_loss import IOULoss, FCOSIOULoss
 from .gfocal_loss import quality_focal_loss, distribution_focal_loss
